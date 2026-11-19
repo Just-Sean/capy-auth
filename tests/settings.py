@@ -83,6 +83,8 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    # capy-auth's breached-password check, as the README tells projects to add it.
+    {"NAME": "capy_auth.passwords.breached.BreachedPasswordValidator"},
 ]
 
 # Email, kept in memory (Django's test runner also collects it in mail.outbox).

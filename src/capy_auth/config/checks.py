@@ -10,9 +10,12 @@ from django.core.checks import Error, Warning
 from django.utils.module_loading import import_string
 
 from capy_auth.account.adapter import AccountAdapter
+from capy_auth.config.models import BreachedPasswordCheck
+from capy_auth.config.selectors import starting_values
 
 ADAPTER_PATH = "capy_auth.account.adapter.AccountAdapter"
 MAX_RESET_LINK_SECONDS = 60 * 60
+BREACHED_VALIDATOR = "capy_auth.passwords.breached.BreachedPasswordValidator"
 JOBS_RUN_AT_ONCE = "django.tasks.backends.immediate.ImmediateBackend"
 # Caches the web process and a separate worker share, kept in memory (not on disk).
 SHARED_CACHES = {
@@ -39,17 +42,45 @@ def check_account_adapter(app_configs, **kwargs):
 
 
 def check_starting_values(app_configs, **kwargs):
-    """The CAPY_AUTH_ starting values must be True or False: a string such as "false"
-    from the environment would make the signup and settings pages fail."""
-    value = getattr(settings, "CAPY_AUTH_SIGNUP_OPEN", True)
-    if isinstance(value, bool):
+    """The CAPY_AUTH_ starting values must be ones the settings record accepts: a string
+    such as "false" from the environment would make the signup and settings pages fail."""
+    values = starting_values()
+    errors = []
+    if not isinstance(values["signup_open"], bool):
+        errors.append(
+            Error(
+                f"CAPY_AUTH_SIGNUP_OPEN must be True or False, not {values['signup_open']!r}.",
+                hint="When it comes from the environment, read it as a true/false value "
+                '(e.g. env.bool("CAPY_AUTH_SIGNUP_OPEN", default=True)).',
+                id="capy_auth.E002",
+            )
+        )
+    if values["breached_password_check"] not in BreachedPasswordCheck.values:
+        errors.append(
+            Error(
+                f"CAPY_AUTH_BREACHED_PASSWORD_CHECK must be one of "
+                f"{', '.join(BreachedPasswordCheck.values)}, "
+                f"not {values['breached_password_check']!r}.",
+                hint="When it comes from the environment, read it as text "
+                '(e.g. env.str("CAPY_AUTH_BREACHED_PASSWORD_CHECK", default="everyone")).',
+                id="capy_auth.E003",
+            )
+        )
+    return errors
+
+
+def check_breached_password_validator(app_configs, **kwargs):
+    """Without capy-auth's validator in the project's password rules, the settings
+    page's "check breached passwords" option does nothing."""
+    names = {validator.get("NAME") for validator in settings.AUTH_PASSWORD_VALIDATORS}
+    if BREACHED_VALIDATOR in names:
         return []
     return [
-        Error(
-            f"CAPY_AUTH_SIGNUP_OPEN must be True or False, not {value!r}.",
-            hint="When it comes from the environment, read it as a true/false value "
-            '(e.g. env.bool("CAPY_AUTH_SIGNUP_OPEN", default=True)).',
-            id="capy_auth.E002",
+        Warning(
+            "capy-auth's breached-password check isn't in AUTH_PASSWORD_VALIDATORS, so the "
+            'capy-auth settings page\'s "check breached passwords" option has no effect.',
+            hint=f'Add {{"NAME": "{BREACHED_VALIDATOR}"}} to AUTH_PASSWORD_VALIDATORS.',
+            id="capy_auth.W003",
         )
     ]
 

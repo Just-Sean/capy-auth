@@ -25,9 +25,11 @@ PASSWORD = secrets.token_urlsafe()
 SIGNUP = reverse("account_signup")
 SETTINGS_LIST = reverse("admin:capy_auth_authsettings_changelist")
 SETTINGS_PAGE = reverse("admin:capy_auth_authsettings_change", args=[AuthSettings.SINGLETON_ID])
+# The settings form with signup left unticked (closed) and the other options unchanged.
+CLOSE_SIGNUP = {"_save": "Save", "breached_password_check": "everyone"}
 HISTORY_PAGE = reverse("admin:capy_auth_authsettings_history", args=[AuthSettings.SINGLETON_ID])
-# The signup page's database queries once the settings record exists: reading it. A
-# later feature that reads more must keep this small (README: Queries).
+# The signup page's database queries once the settings record exists: reading it, once
+# for the whole request (README: Queries).
 SIGNUP_PAGE_QUERIES = 1
 
 
@@ -148,7 +150,7 @@ def test_the_settings_list_opens_the_one_record(superuser_client):
 @pytest.mark.django_db
 def test_an_admin_closes_signup_and_the_change_is_recorded(superuser_client):
     get_auth_settings()
-    response = superuser_client.post(SETTINGS_PAGE, {"_save": "Save"})  # box left unticked
+    response = superuser_client.post(SETTINGS_PAGE, CLOSE_SIGNUP)
     assert response.status_code == 302
     assert get_auth_settings().signup_open is False
     assert LogEntry.objects.filter(action_flag=CHANGE, object_id="1").exists()
@@ -198,7 +200,7 @@ def test_staff_with_view_permission_see_the_settings_read_only(client):
     page = client.get(SETTINGS_PAGE)
     assert page.status_code == 200
     assert 'name="signup_open"' not in page.content.decode()
-    assert client.post(SETTINGS_PAGE, {"_save": "Save"}).status_code == 403
+    assert client.post(SETTINGS_PAGE, CLOSE_SIGNUP).status_code == 403
     assert get_auth_settings().signup_open is True
     assert client.get(HISTORY_PAGE).status_code == 200
 
@@ -207,7 +209,7 @@ def test_staff_with_view_permission_see_the_settings_read_only(client):
 def test_staff_with_the_change_permission_can_change_the_settings(client):
     log_in_staff(client, "change_authsettings")
     assert client.get(SETTINGS_LIST).url == SETTINGS_PAGE  # opening it makes the record
-    assert client.post(SETTINGS_PAGE, {"_save": "Save"}).status_code == 302
+    assert client.post(SETTINGS_PAGE, CLOSE_SIGNUP).status_code == 302
     assert get_auth_settings().signup_open is False
 
 
