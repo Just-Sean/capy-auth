@@ -1,5 +1,5 @@
 """Edge cases for asking again and the "Signed-in devices" page: every action that asks,
-the 5-minute edge, sessions from the admin's login and from before the install,
+the 5-minute edge, sessions from Django's own login and from before the install,
 password changes, other users, hostile or long browser descriptions, IPv6."""
 
 import pytest
@@ -24,7 +24,6 @@ from tests.helpers import check_page
 SESSIONS_PAGE = reverse("usersessions_list")
 EMAIL_PAGE = reverse("account_email")
 REAUTHENTICATE = reverse("account_reauthenticate")
-ADMIN_LOGIN = reverse("admin:login")
 FIVE_MINUTES = 300
 
 
@@ -47,23 +46,13 @@ def typed_password_seconds_ago(client, seconds):
     session.save()
 
 
-def admin_signed_in(user, user_agent="Admin browser/9.0"):
+def django_signed_in(user, user_agent="Other browser/9.0"):
+    """Signed in by Django's own login (another app's login page, a project's own code),
+    not through allauth, which records its sign-ins itself."""
     client = Client(HTTP_USER_AGENT=user_agent)
-    response = client.post(
-        ADMIN_LOGIN,
-        {"username": user.get_username(), "password": PASSWORD, "next": "/admin/"},
-    )
-    assert response.status_code == 302, response.content[:500]
-    assert client.get("/admin/").status_code == 200
+    client.post("/other-apps-login/", {"email": user.email, "password": PASSWORD})
+    assert client.get(ACCOUNT_PAGE).status_code == 200
     return client
-
-
-@pytest.fixture
-def staff_ada(ada):
-    ada.is_staff = True
-    ada.is_superuser = True
-    ada.save()
-    return ada
 
 
 @pytest.fixture
@@ -77,36 +66,36 @@ def second_address(ada):
 
 
 @pytest.mark.django_db
-def test_a_sign_in_on_the_admin_login_is_listed(staff_ada):
-    admin_signed_in(staff_ada)
+def test_a_sign_in_by_djangos_own_login_is_listed(ada):
+    django_signed_in(ada)
     laptop = signed_in("Laptop browser/2.0")
     page = check_page(laptop.get(SESSIONS_PAGE))
-    assert "Admin browser/9.0" in page
+    assert "Other browser/9.0" in page
 
 
 @pytest.mark.django_db
-def test_sign_out_everywhere_else_ends_an_admin_login_session(staff_ada):
-    admin = admin_signed_in(staff_ada)
+def test_sign_out_everywhere_else_ends_a_session_from_djangos_own_login(ada):
+    other = django_signed_in(ada)
     laptop = signed_in("Laptop browser/2.0")
     phone = signed_in("Phone browser/1.0")
     laptop.post(SESSIONS_PAGE)
     assert phone.get(ACCOUNT_PAGE).status_code == 302
-    assert admin.get(ACCOUNT_PAGE).status_code == 302  # should be signed out too
+    assert other.get(ACCOUNT_PAGE).status_code == 302  # should be signed out too
 
 
 @pytest.mark.django_db
-def test_a_device_signed_in_on_the_admins_login_is_listed_as_this_device(staff_ada):
-    """This device signed in on the admin's login page; a phone through capy-auth's.
-    Both are listed, this one marked, and the button signs out the phone."""
+def test_a_device_signed_in_by_djangos_own_login_is_listed_as_this_device(ada):
+    """This device signed in by Django's own login; a phone through capy-auth's. Both
+    are listed, this one marked, and the button signs out the phone."""
     phone = signed_in("Phone browser/1.0")
-    admin = admin_signed_in(staff_ada)
-    page = check_page(admin.get(SESSIONS_PAGE))
-    assert "Phone browser/1.0" in page and "Admin browser/9.0" in page
+    this = django_signed_in(ada)
+    page = check_page(this.get(SESSIONS_PAGE))
+    assert "Phone browser/1.0" in page and "Other browser/9.0" in page
     assert page.count("This device") == 1
     assert f'action="{SESSIONS_PAGE}"' in page
-    admin.post(SESSIONS_PAGE)
+    this.post(SESSIONS_PAGE)
     assert phone.get(ACCOUNT_PAGE).status_code == 302
-    assert admin.get(ACCOUNT_PAGE).status_code == 200
+    assert this.get(ACCOUNT_PAGE).status_code == 200
 
 
 @pytest.mark.django_db

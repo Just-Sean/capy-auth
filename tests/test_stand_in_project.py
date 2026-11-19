@@ -16,7 +16,10 @@ from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.test import RequestFactory
 
-ADMIN_LOGIN = "/admin/login/"
+from tests.staff import two_step_client
+
+ADMIN = "/admin/"
+LOGIN = "/accounts/login/"
 LAYOUT_CHECK = "/layout-check/"
 SETTINGS_FILE = Path(__file__).resolve().parent / "settings.py"
 EMAIL_USERS = settings.TEST_USER_MODEL == "email"
@@ -50,9 +53,13 @@ def parse_policy(header):
     return policy
 
 
-def test_pages_get_exactly_capy_projects_policy(client):
-    # The admin's login page uses the nonce, so the header carries it.
-    response = client.get(ADMIN_LOGIN)
+@pytest.mark.django_db
+def test_pages_get_exactly_capy_projects_policy():
+    # The admin's pages use the nonce, so the header carries it.
+    superuser = get_user_model().objects.create_superuser(
+        username="root", email="root@example.com", password=PASSWORD
+    )
+    response = two_step_client(superuser).get(ADMIN)
     assert response.status_code == 200
     assert parse_policy(response.headers["Content-Security-Policy"]) == CAPY_PROJECT_POLICY
 
@@ -71,7 +78,6 @@ def test_allauth_is_the_login_backend():
     assert settings.AUTHENTICATION_BACKENDS == [
         "axes.backends.AxesStandaloneBackend",
         "allauth.account.auth_backends.AuthenticationBackend",
-        "django.contrib.auth.backends.ModelBackend",
     ]
 
 
@@ -90,9 +96,9 @@ def test_an_unknown_user_model_choice_is_refused(monkeypatch, value):
 @pytest.mark.django_db
 def test_a_user_can_log_in_through_allauth():
     get_user_model().objects.create_user(username="ada", email="ada@example.com", password=PASSWORD)
-    request = RequestFactory().post(ADMIN_LOGIN)
-    assert authenticate(request, username="ada", password=PASSWORD)
-    assert authenticate(request, username="ada", password=PASSWORD + "-wrong") is None
+    request = RequestFactory().post(LOGIN)
+    assert authenticate(request, email="ada@example.com", password=PASSWORD)
+    assert authenticate(request, email="ada@example.com", password=PASSWORD + "-wrong") is None
 
 
 @email_users_only

@@ -1,5 +1,5 @@
 """Recording sign-ins for the "Signed-in devices" page. allauth records only sign-ins
-through its own pages; capy-auth also records Django's own logins (the admin's login
+through its own pages; capy-auth also records Django's own logins (another app's login
 page, or any code calling django.contrib.auth.login) and, when someone opens the page
 from a session nobody recorded, that session. Otherwise those sessions would be missing
 from the page and survive "Sign out everywhere else"."""
@@ -25,6 +25,6 @@ def record_session(request, user):
 
 
 def record_django_login(sender, request, user, **kwargs):
-    """Django's user_logged_in signal (not allauth's): every login, the admin's too."""
+    """Django's user_logged_in signal (not allauth's): every login, other apps' too."""
     if request is not None and hasattr(request, "session"):
         record_session(request, user)

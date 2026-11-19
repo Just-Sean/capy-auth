@@ -43,6 +43,7 @@ from tests.accounts import (
     users_with_email,
 )
 from tests.helpers import check_page
+from tests.staff import two_step_client
 
 BANNED = "mallory@example.com"
 BAN_SUBJECT = "This address can't be used for an account"
@@ -72,8 +73,7 @@ def superuser_client(client):
     superuser = get_user_model().objects.create_superuser(
         username="admin", email="admin@example.com", password=PASSWORD
     )
-    client.force_login(superuser)
-    return client
+    return two_step_client(superuser, client)
 
 
 @pytest.fixture
@@ -109,9 +109,7 @@ def staff_client(*codenames):
         username="staff", email="staff@example.com", password=PASSWORD, is_staff=True
     )
     staff.user_permissions.add(*Permission.objects.filter(codename__in=codenames))
-    client = Client()
-    client.force_login(staff)
-    return client
+    return two_step_client(staff)
 
 
 def lift(client, *bans):
@@ -742,12 +740,11 @@ def test_a_session_from_before_recording_isnt_signed_back_in(
 
 
 @pytest.mark.django_db
-def test_every_browser_and_the_admin_login_are_signed_out(superuser_client, ban_in_admin, mallory):
+def test_every_browser_and_an_admin_session_are_signed_out(superuser_client, ban_in_admin, mallory):
+    browsers = [browser_of(mallory, HTTP_USER_AGENT=f"B{n}") for n in range(3)]
     mallory.is_staff = True
     mallory.save()
-    browsers = [browser_of(mallory, HTTP_USER_AGENT=f"B{n}") for n in range(3)]
-    admin = Client()
-    admin.post(reverse("admin:login"), {"username": "mallory", "password": PASSWORD})
+    admin = two_step_client(mallory)
     assert admin.get("/admin/").status_code == 200
     ban_and_lift(ban_in_admin, superuser_client)
     assert [b.get(ACCOUNT_PAGE).status_code for b in browsers] == [302, 302, 302]

@@ -10,7 +10,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.management import call_command
-from django.test import Client, RequestFactory
+from django.test import RequestFactory
 from django.urls import reverse
 
 from capy_auth.config.models import AuthSettings, BreachedPasswordCheck
@@ -18,6 +18,7 @@ from capy_auth.config.selectors import get_auth_settings
 from tests.accounts import CHANGE_PASSWORD, PASSWORD, RESET, reset_link, sign_up
 from tests.helpers import check_page
 from tests.hibp import HibpStandIn, StandInResponse, answer
+from tests.staff import two_step_client
 
 NEW = secrets.token_urlsafe()
 EMAIL_USERS = settings.TEST_USER_MODEL == "email"
@@ -75,7 +76,7 @@ def test_a_staff_password_change_is_checked_at_the_staff_level(client, ada):
     set_level(BreachedPasswordCheck.STAFF)
     ada.is_staff = True
     ada.save()
-    client.force_login(ada)
+    two_step_client(ada, client)
     new_password_breached()
     page = check_page(
         client.post(CHANGE_PASSWORD, {"oldpassword": PASSWORD, "password1": NEW, "password2": NEW})
@@ -104,9 +105,7 @@ def superuser_client():
     superuser = get_user_model().objects.create_superuser(
         username="root", email="root@example.com", password=PASSWORD
     )
-    client = Client()
-    client.force_login(superuser)
-    return client
+    return two_step_client(superuser)
 
 
 @pytest.mark.django_db

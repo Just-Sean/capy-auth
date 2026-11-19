@@ -1,8 +1,11 @@
 """Django system checks for MFA: allauth's MFA app and capy-auth's adapter must be in
-use, or secrets would be stored readable; and the encryption key must be set up, as
-whoever sets up the project is told at every step (README, development, production).
-Nothing here imports allauth's MFA code before checking the app is installed: without
-it, that import would crash before the check could say what to do."""
+use, or secrets would be stored readable; the encryption key must be set up, as
+whoever sets up the project is told at every step (README, development, production);
+and staff must sign in with two-step sign-in, through allauth's sign-in page. Nothing
+here imports allauth's MFA code before checking the app is installed: without it, that
+import would crash before the check could say what to do."""
+
+from importlib import import_module
 
 from django.apps import apps
 from django.conf import settings
@@ -14,6 +17,8 @@ from .crypto import GENERATE_COMMANDS, SETTING, KeyProblem, configured_keys, key
 MFA_APP = "allauth.mfa"
 ADAPTER_PATH = "capy_auth.mfa.adapter.MFAAdapter"
 INSECURE_ORIGIN = "MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN"
+STAFF_MIDDLEWARE = "capy_auth.mfa.staff.StaffTwoStepMiddleware"
+ADMIN_LOGIN_LINE = "admin.site.login = secure_admin_login(admin.site.login)"
 KEY_HINT = (
     f"Generate a key with:\n{GENERATE_COMMANDS}\n"
     f"Put it in the environment as {SETTING} (in a project made from capy-project, in "
@@ -117,5 +122,47 @@ def check_passkey_forms(app_configs, **kwargs):
             "pages use allauth's wording and accept names of any length.",
             hint=f"Set MFA_FORMS = {FORMS!r}, as capy-auth's README says.",
             id="capy_auth.W006",
+        )
+    ]
+
+
+def check_staff_middleware(app_configs, **kwargs):
+    """Without capy-auth's middleware, staff could use the site and the admin without
+    two-step sign-in (mfa/staff.py)."""
+    if STAFF_MIDDLEWARE in settings.MIDDLEWARE:
+        return []
+    return [
+        Error(
+            "Two-step sign-in isn't required for staff, because capy-auth's staff "
+            "middleware isn't in MIDDLEWARE.",
+            hint=f'Add "{STAFF_MIDDLEWARE}" to MIDDLEWARE, after allauth\'s '
+            "AccountMiddleware, as capy-auth's README says.",
+            id="capy_auth.E010",
+        )
+    ]
+
+
+def admin_login_uses_allauth():
+    from allauth.account.decorators import secure_admin_login
+    from django.contrib import admin
+
+    import_module(settings.ROOT_URLCONF)  # the project's urls.py, where the line goes
+    wrapper_code = secure_admin_login(lambda request: None).__code__
+    return getattr(admin.site.login, "__code__", None) is wrapper_code
+
+
+def check_admin_login(app_configs, **kwargs):
+    """The admin's own login page skips allauth (its limits, the ban list's email, the
+    second step); allauth's secure_admin_login sends it to capy-auth's sign-in page."""
+    if not apps.is_installed("django.contrib.admin") or admin_login_uses_allauth():
+        return []
+    return [
+        Error(
+            "The admin's own login page is in use, so admin sign-ins skip capy-auth's "
+            "sign-in page.",
+            hint="In config/urls.py add `from allauth.account.decorators import "
+            f"secure_admin_login` and, before urlpatterns, `{ADMIN_LOGIN_LINE}`, as "
+            "capy-auth's README says.",
+            id="capy_auth.E011",
         )
     ]

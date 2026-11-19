@@ -138,28 +138,17 @@ def test_a_successful_login_clears_axes_count(ada):
 
 
 @pytest.mark.django_db
-def test_the_admins_own_login_page_is_counted_too():
+def test_the_admins_login_page_checks_no_passwords():
+    """It sends people to capy-auth's sign-in page (allauth's secure_admin_login), whose
+    limits count every attempt, so there's no second place to guess passwords."""
     get_user_model().objects.create_superuser(
         username="root", email="root@example.com", password=PASSWORD
     )
     client = Client()
-    for _ in range(FAILURE_LIMIT):
-        client.post(ADMIN_LOGIN, {"username": "root", "password": WRONG})
-    assert client.post(ADMIN_LOGIN, {"username": "root", "password": PASSWORD}).status_code == 429
-
-
-@pytest.mark.django_db
-def test_admin_and_allauth_failures_add_up_to_one_count():
-    root = get_user_model().objects.create_superuser(
-        username="root", email="root@example.com", password=PASSWORD
-    )
-    EmailAddress.objects.create(user=root, email=root.email, primary=True, verified=True)
-    client = Client()
-    for _ in range(3):
-        client.post(ADMIN_LOGIN, {"username": "root", "password": WRONG})
-    fail(client, "root@example.com", 2)
-    forget_allauths_counts()
-    assert client.post(ADMIN_LOGIN, {"username": "root", "password": PASSWORD}).status_code == 429
+    response = client.post(ADMIN_LOGIN, {"username": "root", "password": PASSWORD})
+    assert response.status_code == 302
+    assert response.url.startswith(reverse("account_login"))
+    assert SESSION_KEY not in client.session
 
 
 @pytest.mark.django_db
