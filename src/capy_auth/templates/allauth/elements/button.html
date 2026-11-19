@@ -2,7 +2,6 @@
 {% comment %}
   A daisyUI button. allauth describes each button with tags; these pick its look.
 {% endcomment %}
-{% comment %} djlint:off {% endcomment %}
 <{% if attrs.href %}a href="{{ attrs.href }}"{% else %}button{% endif %}
 class="btn{% if 'prominent' in attrs.tags or 'primary' in attrs.tags %} btn-primary{% endif %}{% if 'secondary' in attrs.tags %} btn-secondary{% endif %}{% if 'danger' in attrs.tags %} btn-error{% endif %}{% if 'outline' in attrs.tags %} btn-outline{% endif %}{% if 'link' in attrs.tags %} btn-link{% endif %}{% if 'minor' in attrs.tags %} btn-sm{% endif %}"
 {% if attrs.form %}form="{{ attrs.form }}"{% endif %}

@@ -1,26 +1,12 @@
-{% load allauth %}
+{% load allauth i18n %}
 {% comment %}
   One field written out by an allauth page (not from a form), with daisyUI classes.
+  Its help text and errors get ids that the input points at (aria-describedby), the
+  same as fields from a form. A checkbox or radio sits inside its label.
 {% endcomment %}
 <div class="fieldset">
-    {% for error in attrs.errors %}
-        <p class="text-error">{{ error }}</p>
-    {% endfor %}
-    {% if attrs.type == "textarea" %}
-        <label class="label" for="{{ attrs.id }}">
-            {% slot label %}
-            {% endslot %}
-        </label>
-        <textarea class="textarea w-full"
-                  {% if attrs.required %}required{% endif %}
-                  {% if attrs.rows %}rows="{{ attrs.rows }}"{% endif %}
-                  {% if attrs.disabled %}disabled{% endif %}
-                  {% if attrs.readonly %}readonly{% endif %}
-                  {% if attrs.name %}name="{{ attrs.name }}"{% endif %}
-                  {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
-                  {% if attrs.placeholder %}placeholder="{{ attrs.placeholder }}"{% endif %}>{% slot value %}{% endslot %}</textarea>
-    {% elif attrs.type == "checkbox" or attrs.type == "radio" %}
-        <label class="label" for="{{ attrs.id }}">
+    {% if attrs.type == "checkbox" or attrs.type == "radio" %}
+        <label class="label whitespace-normal text-base" for="{{ attrs.id }}">
             <input class="{{ attrs.type }}"
                    {% if attrs.required %}required{% endif %}
                    {% if attrs.disabled %}disabled{% endif %}
@@ -33,25 +19,47 @@
             {% endslot %}
         </label>
     {% else %}
-        <label class="label" for="{{ attrs.id }}">
+        <label class="fieldset-legend" for="{{ attrs.id }}">
             {% slot label %}
             {% endslot %}
         </label>
-        <input class="input w-full"
-               {% if attrs.required %}required{% endif %}
-               {% if attrs.disabled %}disabled{% endif %}
-               {% if attrs.readonly %}readonly{% endif %}
-               {% if attrs.name %}name="{{ attrs.name }}"{% endif %}
-               {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
-               {% if attrs.placeholder %}placeholder="{{ attrs.placeholder }}"{% endif %}
-               {% if attrs.autocomplete %}autocomplete="{{ attrs.autocomplete }}"{% endif %}
-               {% if attrs.value is not None %}value="{{ attrs.value }}"{% endif %}
-               type="{{ attrs.type }}">
+        {% if attrs.type == "textarea" %}
+            <textarea class="textarea{% if attrs.errors %} textarea-error{% endif %} w-full text-base"
+                      {% if attrs.required %}required{% endif %}
+                      {% if attrs.rows %}rows="{{ attrs.rows }}"{% endif %}
+                      {% if attrs.disabled %}disabled{% endif %}
+                      {% if attrs.readonly %}readonly{% endif %}
+                      {% if attrs.name %}name="{{ attrs.name }}"{% endif %}
+                      {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
+                      {% if attrs.placeholder %}placeholder="{{ attrs.placeholder }}"{% endif %}
+                      {% if attrs.errors %}aria-invalid="true"{% endif %}
+                      {% if slots.help_text or attrs.errors %}aria-describedby="{% if slots.help_text %}{{ attrs.id }}_helptext {% endif %}{% if attrs.errors %}{{ attrs.id }}_error{% endif %}"{% endif %}>{% slot value %}{% endslot %}</textarea>
+        {% else %}
+            <input class="input{% if attrs.errors %} input-error{% endif %} w-full text-base"
+                   {% if attrs.required %}required{% endif %}
+                   {% if attrs.disabled %}disabled{% endif %}
+                   {% if attrs.readonly %}readonly{% endif %}
+                   {% if attrs.name %}name="{{ attrs.name }}"{% endif %}
+                   {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
+                   {% if attrs.placeholder %}placeholder="{{ attrs.placeholder }}"{% endif %}
+                   {% if attrs.autocomplete %}autocomplete="{{ attrs.autocomplete }}"{% endif %}
+                   {% if attrs.value is not None %}value="{{ attrs.value }}"{% endif %}
+                   {% if attrs.errors %}aria-invalid="true"{% endif %}
+                   {% if slots.help_text or attrs.errors %}aria-describedby="{% if slots.help_text %}{{ attrs.id }}_helptext {% endif %}{% if attrs.errors %}{{ attrs.id }}_error{% endif %}"{% endif %}
+                   type="{{ attrs.type }}">
+        {% endif %}
     {% endif %}
     {% if slots.help_text %}
-        <div class="label">
+        <div class="whitespace-normal" id="{{ attrs.id }}_helptext">
             {% slot help_text %}
             {% endslot %}
+        </div>
+    {% endif %}
+    {% if attrs.errors %}
+        <div id="{{ attrs.id }}_error">
+            {% for error in attrs.errors %}
+                <p><strong>{% translate "Error:" %}</strong> {{ error }}</p>
+            {% endfor %}
         </div>
     {% endif %}
 </div>
