@@ -125,7 +125,7 @@ def test_three_wrong_codes_end_the_attempt_with_a_clear_message(client):
     for _ in range(2):
         client.post(code_url, {"code": WRONG_CODE})
     response = client.post(code_url, {"code": WRONG_CODE}, follow=True)
-    assert "If you were entering a code, it can&#x27;t be used any more" in check_page(response)
+    assert "If you were entering a code, it can’t be used any more" in check_page(response)
     client.post(code_url, {"code": code})
     assert not EmailAddress.objects.get(email="eve@example.com").verified
 

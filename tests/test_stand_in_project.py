@@ -69,6 +69,7 @@ def test_a_page_in_the_layout_gets_its_blocks_and_escaped_messages(client):
 
 def test_allauth_is_the_login_backend():
     assert settings.AUTHENTICATION_BACKENDS == [
+        "axes.backends.AxesStandaloneBackend",
         "allauth.account.auth_backends.AuthenticationBackend",
         "django.contrib.auth.backends.ModelBackend",
     ]

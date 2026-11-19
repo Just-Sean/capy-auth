@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% comment %}
+  Shown (status 503) when the cache is down and sign-in pages can't count attempts
+  (capy_auth/limits/middleware.py).
+{% endcomment %}
+{% load i18n %}
+{% block title %}{% translate "Temporarily unavailable" %}{% endblock %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        <h1 class="text-2xl font-bold">{% translate "Temporarily unavailable" %}</h1>
+        <p>{% translate "Account pages (signing in, signing up, passwords and email addresses) are temporarily unavailable. Please try again in a few minutes." %}</p>
+        <p>
+            <a class="link" href="/">{% translate "Go to the home page" %}</a>
+        </p>
+    </div>
+{% endblock %}

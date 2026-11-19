@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% comment %}
+  django-axes' lockout page (status 429), inside the project's layout: projects point
+  AXES_LOCKOUT_TEMPLATE here. axes passes cooloff_timedelta, how long the lockout lasts.
+{% endcomment %}
+{% load i18n %}
+{% block title %}{% translate "Too many attempts" %}{% endblock %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        <h1 class="text-2xl font-bold">{% translate "Too many attempts" %}</h1>
+        <p>
+            {% if cooloff_timedelta %}
+                {% widthratio cooloff_timedelta.total_seconds 60 1 as minutes %}
+                {% blocktranslate count minutes=minutes|add:0 %}There have been too many failed attempts to sign in. Please wait {{ minutes }} minute, then try again.{% plural %}There have been too many failed attempts to sign in. Please wait {{ minutes }} minutes, then try again.{% endblocktranslate %}
+            {% else %}
+                {% translate "There have been too many failed attempts to sign in. Please wait a while, then try again." %}
+            {% endif %}
+        </p>
+        <p>
+            <a class="link" href="{% url 'account_reset_password' %}">{% translate "Forgot your password?" %}</a>
+        </p>
+    </div>
+{% endblock %}

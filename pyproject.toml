@@ -40,6 +40,7 @@ dev = [
     "pre-commit>=4.7",          # the commit checks (.pre-commit-config.yaml)
     "pip-audit>=2.10",          # checks the locked dependencies for known vulnerabilities
     "pytest-cov>=7.1",          # test coverage (uv run pytest --cov)
+    "django-axes>=9.0",         # tests capy-auth with login lockouts, as capy-project runs them
 ]
 
 [tool.pytest.ini_options]
