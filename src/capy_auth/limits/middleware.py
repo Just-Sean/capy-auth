@@ -1,7 +1,8 @@
 """When the cache (Redis) is down, allauth can't count attempts, so its pages fail. This
 turns that failure into a proper "temporarily unavailable" page inside the layout, with
 status 503, instead of a server error. Nothing gets through: the limits are never
-skipped. A project adds it to MIDDLEWARE (see the README)."""
+skipped. It does the same when a stored MFA secret can't be decrypted. A project adds it
+to MIDDLEWARE (see the README)."""
 
 import logging
 
@@ -9,6 +10,8 @@ from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.http import Http404
 from django.shortcuts import render
+
+from capy_auth.mfa.crypto import SecretUnreadable
 
 logger = logging.getLogger("capy_auth")
 
@@ -56,7 +59,11 @@ class CacheDownMiddleware:
 
     def process_exception(self, request, exception):
         """Only for account pages, and only when the cache is down; a missing page, a
-        refusal or any other error is left to Django as usual."""
+        refusal or any other error is left to Django as usual. Also, on any page, a
+        stored MFA secret that can't be decrypted (the key is gone: mfa/crypto.py, which
+        logs it) gets a page saying what to do instead of a crash; nobody gets in."""
+        if isinstance(exception, SecretUnreadable):
+            return render(request, "capy_auth/mfa_unavailable.html", status=503)
         if not is_account_page(request) or isinstance(exception, Http404 | PermissionDenied):
             return None
         if not (raised_by_cache(exception) or cache_is_down()):

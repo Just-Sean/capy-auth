@@ -43,6 +43,7 @@ name = "capy-auth"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "django" },
     { name = "django-allauth", extra = ["mfa", "socialaccount"] },
 ]
@@ -62,6 +63,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=50.0.2" },
     { name = "django", specifier = ">=6.1,<7" },
     { name = "django-allauth", extras = ["mfa", "socialaccount"], specifier = ">=65.22.1,<66" },
 ]

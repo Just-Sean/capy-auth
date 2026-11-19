@@ -13,9 +13,8 @@ from allauth.account.models import EmailAddress
 from allauth.account.views import EmailView
 from django import forms
 from django.contrib.auth import get_user_model
-from django.template import Context, Template
+from django.template import Context, Template, engines
 from django.template.base import Origin
-from django.template.loader import get_template
 from django.test import Client
 from django.urls import NoReverseMatch, reverse
 
@@ -25,7 +24,7 @@ from tests.test_csp import blocked_in
 ALLAUTH_TEMPLATES = Path(allauth.__file__).resolve().parent / "templates"
 CAPY_AUTH_TEMPLATES = Path(__file__).resolve().parent.parent / "src/capy_auth/templates"
 # The allauth apps the stand-in project installs; each later feature adds its own.
-CHECKED_FOLDERS = ("allauth", "account", "usersessions")
+CHECKED_FOLDERS = ("allauth", "account", "usersessions", "mfa")
 PASSWORD = secrets.token_urlsafe()
 
 # allauth's account pages that need no link key, as seen logged out and logged in.
@@ -43,6 +42,7 @@ LOGGED_IN_PAGES = [
     "account_reauthenticate",
     "account_logout",
     "usersessions_list",
+    "mfa_index",
 ]
 # allauth pages capy-auth copies to change one thing: the inline style the policy blocks.
 COPIED_PAGES = ["account/email_change.html", "account/phone_change.html"]
@@ -370,6 +370,12 @@ REWRITTEN_PAGES = {
     "account/base_reauthenticate.html": (
         "3c03c732d9f8e91f5defe4d03e6286e34db65b0a6b0000e60a129cd34173b5fc"
     ),
+    "mfa/totp/activate_form.html": (
+        "c7268f27735c65136561468cd40614ca146b194b6f20fcf4d2f0794d1a04af40"
+    ),
+    "mfa/authenticate.html": (  # wrapped like the others (a sha256 of a template)
+        "37e688fdef8f745254fbc6afcacebe74a288c7591743f45880bd368b886dd73e"
+    ),
     "usersessions/usersession_list.html": (
         "232143c3f98d9d9fd03c97fb0516f9af0a61cf069edf123e2ed90ae5fa814808"
     ),
@@ -407,14 +413,25 @@ def allauth_template_names():
     )
 
 
+def template_file(name):
+    """The file Django uses for a template name, found the way its loaders find it
+    (project folders, then apps in order), without compiling the template."""
+    for loader in engines["django"].engine.template_loaders:
+        for origin in loader.get_template_sources(name):
+            if Path(origin.name).exists():
+                return origin.name
+    raise AssertionError(f"no template {name}")
+
+
 def test_every_allauth_template_in_use_has_nothing_the_policy_blocks():
     # The template Django actually uses for each name: capy-auth's where it overrides
     # allauth's, allauth's otherwise. Emails aren't pages, so the policy doesn't apply.
+    # Read as files, not compiled: some (passkeys, feature 12) need apps not installed.
     problems = {}
     for name in allauth_template_names():
         if "/email/" in name:
             continue
-        source = Path(get_template(name).origin.name).read_text(encoding="utf-8")
+        source = Path(template_file(name)).read_text(encoding="utf-8")
         if blocked := blocked_in(source):
             problems[name] = blocked
     assert problems == {}

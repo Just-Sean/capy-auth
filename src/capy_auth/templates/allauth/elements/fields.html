@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n capy_auth_forms %}
 {% comment %}
   Every field of an allauth form, with daisyUI classes. Always with a visible label,
   even where allauth asks for none (unlabeled=True), so screen readers and people who
@@ -40,7 +40,11 @@
         {% endif %}
         {% if field.name == "code" %}
             <div class="label whitespace-normal" id="{{ field.auto_id }}_hint">
-                {% translate "The code from the email we sent you: 8 letters and numbers, like ABCD-1234. It only works for a short time." %}
+                {% if field|is_app_code %}
+                    {% translate "The 6-digit code from your authenticator app, or one of your recovery codes." %}
+                {% else %}
+                    {% translate "The code from the email we sent you: 8 letters and numbers, like ABCD-1234. It only works for a short time." %}
+                {% endif %}
             </div>
         {% endif %}
         {% if field.errors %}
