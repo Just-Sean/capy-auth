@@ -26,8 +26,8 @@ PRODUCTION_SECURITY = {
 CLICKJACKING_MIDDLEWARE = "django.middleware.clickjacking.XFrameOptionsMiddleware"
 
 
-@pytest.mark.django_db  # allauth's sessions model has a JSON field, which Django's
-# checks ask the database about
+# allauth's sessions model has a JSON field, which Django's checks ask the database about.
+@pytest.mark.django_db
 def test_the_module_adds_no_deployment_warning(settings):
     for name, value in PRODUCTION_SECURITY.items():
         setattr(settings, name, value)

@@ -65,17 +65,32 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   when a project weakens one of these settings. `urls.py` mounts allauth's pages with
   capy-auth's "Your account" page, where people land after logging in, and
   `templates/429.html` puts allauth's "too many attempts" page inside the layout.
-- **Sessions** (`sessions/`, `templates/usersessions/`): allauth asks for the password
-  again before sensitive changes (adding or removing an address, setting a password,
-  later MFA) unless it was typed in the last 5 minutes
-  (`ACCOUNT_REAUTHENTICATION_REQUIRED`, with allauth's 5-minute
-  `ACCOUNT_REAUTHENTICATION_TIMEOUT`); signing in alone
-  doesn't count, and changing the password always asks for the current one. allauth's
-  user sessions app records each sign-in; capy-auth's "Signed-in devices" page
-  (rewritten from allauth's, as cards that wrap on phones) lists them and signs out
-  everywhere else. It shows when each started, not when it was last used: allauth's
-  `USERSESSIONS_TRACK_ACTIVITY` would write to the database on every request, so it's
-  left off. `checks.py` is the startup check E006.
+- **Sessions** (`sessions/`, `templates/usersessions/`):
+  - **Asking again:** allauth asks for the password again, on its "Confirm it's you"
+    page (rewritten by capy-auth), before sensitive changes: adding, removing or
+    choosing the main email address, setting a password, and later MFA. After you
+    confirm it there, it doesn't ask again for 5 minutes
+    (`ACCOUNT_REAUTHENTICATION_TIMEOUT`, allauth's default; Django's checks warn,
+    with `capy_auth.W001`, if a project makes it longer). Typing the password to sign
+    in doesn't count, so the first such change after signing in always asks. Changing
+    the password asks for the current one on its own form instead.
+  - **Signed-in devices** (`/accounts/sessions/`): allauth's user sessions app records
+    each sign-in through capy-auth's pages; `recording.py` also records Django's own
+    logins (the admin's login page) and, when someone opens the page from a session
+    nobody recorded, that session, so this device is always listed and "Sign out
+    everywhere else" reaches every recorded session. `views.py` is allauth's page with
+    that step first; the template (rewritten from allauth's) shows cards that wrap on
+    phones. It shows when each session started, not when it was last used: allauth's
+    `USERSESSIONS_TRACK_ACTIVITY` would write to the database on every signed-in
+    request, so it's left off (a project that turns it on gets a "Last seen" line on
+    each device). The page doesn't ask for the password again: someone with a stolen
+    session could see the other devices and sign them out, but they just sign in
+    again, and changing the password signs out everyone else, the thief included.
+  - **What's stored:** each session's IP address and browser description (personal
+    data), until the session ends and the person next signs in or opens the page;
+    staff can see all of them in allauth's "User sessions" admin. `checks.py` holds
+    the startup checks E006 (the app or middleware missing) and W004 (cookie-only
+    sessions, which the server can't end).
 - **Emails** are sent by the project's background worker (`emails/`). capy-auth's
   adapter builds each email as allauth does, keeps the finished email in the cache
   under a random key for up to an hour, and enqueues a job (Django's Tasks API) that
@@ -139,12 +154,14 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   `account/email_change.html` and `account/phone_change.html`, are copied with their
   inline style (which the Content Security Policy blocks) replaced by the `hidden`
   attribute; a test fails if allauth's originals change, and another if allauth gives
-  an element something the override doesn't show. Four more are rewritten rather
+  an element something the override doesn't show. Six more are rewritten rather
   than copied: `account/email.html` (addresses wrap on narrow screens, the choices are
   grouped under a legend, the buttons say they act on the chosen address, capy-auth's
   wording), `account/password_reset_from_key.html` and `_done.html` ("Choose a
   password", then a "Sign in" button), and `usersessions/usersession_list.html` (see
-  Sessions); a test fails when allauth's original of any of them changes.
+  Sessions), and `account/reauthenticate.html` and `base_reauthenticate.html` ("Confirm
+  it's you", why it asks, a way back); a test fails when allauth's original of any of
+  them changes.
   `account/account_inactive.html` replaces allauth's inactive-account page with an
   "Account suspended" page inside the layout (written for capy-auth, not copied).
 - **The stand-in project** (`tests/settings.py`, `tests/urls.py`) is the smallest
@@ -213,9 +230,19 @@ In a project made from capy-project, with its database running
    ]
    ```
 
-   allauth's user sessions app records each sign-in (in its own table, created by
-   `migrate` in step 8) for the "Signed-in devices" page; without the app or its
-   middleware, Django's checks stop the site (`capy_auth.E006`).
+   allauth's user sessions app records each sign-in in its own table (created by
+   `migrate` in step 8) for the "Signed-in devices" page. Its middleware is part of
+   allauth's setup and only does work if `USERSESSIONS_TRACK_ACTIVITY` is on. Without
+   either one, Django's checks stop the site (`capy_auth.E006`). Sessions that were
+   already signed in before you add it are listed only after they sign in again (or
+   open the page themselves), so "Sign out everywhere else" can't reach them until
+   then. To sign everyone out once at rollout (with database sessions, as capy-project
+   has), run after deploying:
+
+   ```bash
+   uv run python manage.py shell -c "from django.contrib.sessions.models import Session; Session.objects.all().delete()"   # development
+   docker compose -f compose.yaml -f compose.prod.yaml exec web python manage.py shell -c "from django.contrib.sessions.models import Session; Session.objects.all().delete()"   # production
+   ```
 
 3. In `config/urls.py` (change its import to `from django.urls import include, path`),
    add to `urlpatterns`:
@@ -325,7 +352,10 @@ In a project made from capy-project, with its database running
      # Logins last for the session's lifetime (Django's 2 weeks), not only until the
      # browser closes, with no "remember me" box.
      ACCOUNT_SESSION_REMEMBER = True
-     # Ask for the password again before changing the password or email addresses.
+     # Ask for the password again before changing email addresses or setting a
+     # password (changing it asks for the current one anyway). For 5 minutes after
+     # it's confirmed, it doesn't ask again (allauth's ACCOUNT_REAUTHENTICATION_TIMEOUT,
+     # 300 seconds by default; leave it unset).
      ACCOUNT_REAUTHENTICATION_REQUIRED = True
      # Tell people by email when their password or email address changes.
      ACCOUNT_EMAIL_NOTIFICATIONS = True
@@ -519,10 +549,14 @@ In a project made from capy-project, with its database running
    http://localhost:8000/accounts/signup/, sign up, copy the code from the email printed
    in the `runserver` output, and you land on "Your account". Sign out, then sign in
    again with the same email and password. Open "Email addresses" from "Your account"
-   to add a second address. Sign in from a second browser, open "Signed-in devices",
-   choose "Sign out everywhere else", and the second browser is signed out. To check the staff email, add a user in the admin, open
-   the "An account was created for you" email in the `runserver` output, choose a
-   password with its link, and sign in without another code.
+   and add a second address: it first asks for your password (signing in doesn't
+   count); add or remove another within 5 minutes and it doesn't ask again. Sign in to
+   the same account from a second browser, then in the first open "Signed-in devices"
+   from "Your account": both are listed, this one marked "This device". Choose "Sign
+   out everywhere else" and reload the second browser: it's signed out. To check the
+   staff email, add a user in the admin, open the "An account was created for you"
+   email in the `runserver` output, choose a password with its link, and sign in
+   without another code.
 
 ## Settings
 
@@ -1173,7 +1207,9 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/models.py` | Lists the module's database models for Django (each lives in its section) |
 | `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
 | `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`) and Django's checks for the project's setup (`checks.py`: errors E001–E003, warnings W001 for weakened security settings, W002 for a cache the worker can't share, W003 for a missing breached-password check) |
-| `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, and allauth's pages |
+| `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), and allauth's pages |
+| `src/capy_auth/sessions/` | Recording every sign-in (`recording.py`), the "Signed-in devices" page's view (`views.py`), and the startup checks E006 and W004 (`checks.py`) |
+| `src/capy_auth/templates/usersessions/` | The "Signed-in devices" page at `accounts/sessions/` and its message (rewritten from allauth's; compare with allauth's when upgrading it, as for `account/`) |
 | `src/capy_auth/templates/capy_auth/account.html` | The "Your account" page |
 | `src/capy_auth/templates/429.html` | allauth's "too many attempts" page, inside the layout |
 | `src/capy_auth/account/adapter.py` | capy-auth's account adapter (allauth asks it how to behave: whether signup is open, its messages, equal timing for taken emails, sending emails through the worker) and `user_display` |
@@ -1207,9 +1243,8 @@ If the repository itself moved, also point git at it:
 | `tests/test_limits.py` | Checks axes locks out one account (under its main email, however typed), not everyone at an address, and a forged forwarded address doesn't escape; the lockout page; the cache-down page; the email check |
 | `tests/test_email_addresses.py` | Checks the email page (add with a code, make primary, remove), the existing-users migration, `mark_email_verified` and the email for accounts staff create |
 | `tests/test_email_addresses_edges.py` | Edge cases: blank and shared addresses, the migration on real migration history, the email page's limits, the real admin "add user" page, when a reset does and doesn't confirm |
-| `src/capy_auth/sessions/` | The startup check E006 for allauth's user sessions (`checks.py`) |
-| `src/capy_auth/templates/usersessions/usersession_list.html` | The "Signed-in devices" page (rewritten from allauth's) |
-| `tests/test_sessions.py` | Checks asking for the password again (the 5-minute window), the "Signed-in devices" page, signing out everywhere else, and E006 |
+| `tests/test_sessions.py` | Checks asking for the password again (the 5-minute window), the "Signed-in devices" page, signing out everywhere else, and E006/W004 |
+| `tests/test_sessions_edges.py` | Edge cases: every action that asks again, the 5-minute edge, sessions from the admin's login and from before the install, password changes, other users, hostile or long browser descriptions, IPv6 |
 | `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends and emails, lifting reactivates; the admin permissions; the check E005 |
 | `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |
 | `tests/test_breached_password_pages.py` | Checks it on every page and command that sets a password (signup, change, reset, the admin, `createsuperuser`), and that the settings record is read once per request |

@@ -15,6 +15,8 @@ from capy_auth.config.selectors import starting_values
 
 ADAPTER_PATH = "capy_auth.account.adapter.AccountAdapter"
 MAX_RESET_LINK_SECONDS = 60 * 60
+# How long allauth trusts a re-entered password before asking again (its default).
+MAX_REAUTHENTICATION_SECONDS = 300
 BREACHED_VALIDATOR = "capy_auth.passwords.breached.BreachedPasswordValidator"
 JOBS_RUN_AT_ONCE = "django.tasks.backends.immediate.ImmediateBackend"
 # Caches the web process and a separate worker share, kept in memory (not on disk).
@@ -104,6 +106,11 @@ def security_settings():
         ),
         ("ACCOUNT_PREVENT_ENUMERATION", "True", bool(account_settings.PREVENT_ENUMERATION)),
         ("ACCOUNT_REAUTHENTICATION_REQUIRED", "True", account_settings.REAUTHENTICATION_REQUIRED),
+        (
+            "ACCOUNT_REAUTHENTICATION_TIMEOUT",
+            f"at most {MAX_REAUTHENTICATION_SECONDS} (5 minutes)",
+            account_settings.REAUTHENTICATION_TIMEOUT <= MAX_REAUTHENTICATION_SECONDS,
+        ),
         (
             "PASSWORD_RESET_TIMEOUT",
             f"at most {MAX_RESET_LINK_SECONDS} (1 hour)",

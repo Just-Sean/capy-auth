@@ -110,8 +110,8 @@ def test_a_deleted_record_comes_back_from_the_projects_setting(settings):
 # --- Startup checks --------------------------------------------------------------------
 
 
-@pytest.mark.django_db  # allauth's sessions model has a JSON field, which Django's
-# checks ask the database about
+# allauth's sessions model has a JSON field, which Django's checks ask the database about.
+@pytest.mark.django_db
 def test_the_stand_in_project_passes_capy_auths_checks():
     call_command("check", "--fail-level", "ERROR")
     assert check_account_adapter(None) == []

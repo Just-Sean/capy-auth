@@ -26,6 +26,7 @@ def test_a_project_set_up_as_the_readme_says_gets_no_warning():
         ("ACCOUNT_PREVENT_ENUMERATION", False),
         ("ACCOUNT_REAUTHENTICATION_REQUIRED", False),
         ("PASSWORD_RESET_TIMEOUT", 60 * 60 * 24),
+        ("ACCOUNT_REAUTHENTICATION_TIMEOUT", 60 * 60),
     ],
 )
 def test_a_weaker_setting_gets_a_warning(settings, name, value):

@@ -2,17 +2,24 @@
 for 5 minutes after the password is typed), the "Signed-in devices" page with "Sign
 out everywhere else", and the check capy_auth.E006."""
 
+import importlib
+import re
+
 import pytest
-from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
+from allauth.account.authentication import AUTHENTICATION_METHODS_SESSION_KEY
+from allauth.usersessions.models import UserSession
 from django.apps import apps
 from django.test import Client
 from django.urls import reverse
 
 from capy_auth.sessions.checks import (
+    COOKIE_SESSIONS,
     SESSIONS_APP,
     SESSIONS_MIDDLEWARE,
+    check_session_store,
     check_user_sessions,
 )
+from capy_auth.sessions.recording import record_django_login
 from tests.accounts import ACCOUNT_PAGE, LOGIN, PASSWORD, log_in
 from tests.helpers import check_page
 
@@ -113,7 +120,7 @@ def test_sign_out_everywhere_else_ends_the_other_sessions_and_keeps_this_one(ada
     tablet = signed_in(Client, "Tablet browser/1.0")
     laptop = signed_in(Client, "Laptop browser/2.0")
     page = check_page(laptop.post(SESSIONS_PAGE, follow=True))
-    assert "Signed out of all other sessions." in page
+    assert "Signed out everywhere else. This device is still signed in." in page
     assert "Phone browser/1.0" not in page
     assert phone.get(ACCOUNT_PAGE).status_code == 302  # signed out
     assert tablet.get(ACCOUNT_PAGE).status_code == 302
@@ -160,3 +167,70 @@ def test_without_the_app_the_site_is_stopped(monkeypatch):
     errors = check_user_sessions(None)
     assert [error.id for error in errors] == ["capy_auth.E006"]
     assert SESSIONS_APP in errors[0].msg
+
+
+# --- What the pages say ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_page_shows_times_with_their_zone_and_links_to_changing_the_password(client, ada):
+    log_in(client)
+    page = check_page(client.get(SESSIONS_PAGE))
+    assert re.search(r'<time datetime="\d{4}-\d\d-\d\dT[^"]+">[^<]+ [A-Z]{2,5}</time>', page)
+    assert f'href="{reverse("account_change_password")}"' in page
+    assert "Only this device is signed in." in page
+    assert 'class="btn btn-outline"' in page  # signing out isn't the page's main action
+
+
+@pytest.mark.django_db
+def test_with_activity_tracking_on_each_device_shows_when_it_was_last_seen(settings, ada):
+    settings.USERSESSIONS_TRACK_ACTIVITY = True
+    client = signed_in(Client, "Laptop browser/2.0")
+    assert "Last seen" in check_page(client.get(SESSIONS_PAGE))
+
+
+@pytest.mark.django_db
+def test_the_confirm_page_says_why_and_offers_a_way_back(client, ada):
+    log_in(client)
+    page = check_page(client.get(REAUTHENTICATE))
+    assert re.search(r"<title>\s*Confirm it’s you\s*</title>", page)
+    assert "we won’t ask again for a few minutes" in page
+    assert f'href="{ACCOUNT_PAGE}"' in page
+    assert 'autocomplete="current-password"' in page
+
+
+@pytest.mark.django_db
+def test_a_sign_in_whose_address_cant_be_read_still_works_unrecorded(ada, caplog):
+    client = Client(REMOTE_ADDR="")
+    client.force_login(ada)  # Django's own login, as the admin's login page does
+    assert client.get(ACCOUNT_PAGE).status_code == 200
+    assert not UserSession.objects.exists()
+    assert "A sign-in wasn't recorded" in caplog.text
+
+
+def test_cookie_only_sessions_get_a_warning(settings):
+    assert check_session_store(None) == []
+    settings.SESSION_ENGINE = COOKIE_SESSIONS
+    assert [warning.id for warning in check_session_store(None)] == ["capy_auth.W004"]
+
+
+def test_without_the_sessions_app_capy_auth_loads_none_of_it(monkeypatch):
+    """A project missing the app gets E006, not a crash while loading capy-auth."""
+    import capy_auth.urls
+
+    installed = apps.is_installed
+    monkeypatch.setattr(apps, "is_installed", lambda name: name != SESSIONS_APP and installed(name))
+    try:
+        apps.get_app_config("capy_auth").ready()  # connects nothing for sessions
+        urls = importlib.reload(capy_auth.urls)
+        assert [p.name for p in urls.urlpatterns if getattr(p, "name", None)] == [
+            "capy_auth_account"
+        ]
+    finally:
+        monkeypatch.undo()
+        importlib.reload(capy_auth.urls)
+
+
+@pytest.mark.django_db
+def test_a_login_without_a_request_isnt_recorded(ada):
+    record_django_login(sender=None, request=None, user=ada)  # e.g. a login in a script

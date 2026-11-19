@@ -1,4 +1,4 @@
-from django.apps import AppConfig
+from django.apps import AppConfig, apps
 from django.core import checks
 
 
@@ -22,7 +22,7 @@ class CapyAuthConfig(AppConfig):
             check_starting_values,
         )
         from capy_auth.limits.checks import check_email_can_be_sent
-        from capy_auth.sessions.checks import check_user_sessions
+        from capy_auth.sessions.checks import check_session_store, check_user_sessions
 
         checks.register(check_account_adapter)
         checks.register(check_starting_values)
@@ -32,5 +32,12 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_email_can_be_sent)
         checks.register(check_signup_form)
         checks.register(check_user_sessions)
+        checks.register(check_session_store)
         ban_receivers.connect_receivers()
         account_receivers.connect_receivers()
+        if apps.is_installed("allauth.usersessions"):  # E006 reports it missing
+            from django.contrib.auth.signals import user_logged_in
+
+            from capy_auth.sessions.recording import record_django_login
+
+            user_logged_in.connect(record_django_login, dispatch_uid="capy_auth_record_login")
