@@ -10,6 +10,7 @@ from django.core.checks import Error, Warning
 from django.utils.module_loading import import_string
 
 from capy_auth.account.adapter import AccountAdapter
+from capy_auth.config.models import BreachedPasswordCheck
 
 ADAPTER_PATH = "capy_auth.account.adapter.AccountAdapter"
 MAX_RESET_LINK_SECONDS = 60 * 60
@@ -39,19 +40,31 @@ def check_account_adapter(app_configs, **kwargs):
 
 
 def check_starting_values(app_configs, **kwargs):
-    """The CAPY_AUTH_ starting values must be True or False: a string such as "false"
-    from the environment would make the signup and settings pages fail."""
-    value = getattr(settings, "CAPY_AUTH_SIGNUP_OPEN", True)
-    if isinstance(value, bool):
-        return []
-    return [
-        Error(
-            f"CAPY_AUTH_SIGNUP_OPEN must be True or False, not {value!r}.",
-            hint="When it comes from the environment, read it as a true/false value "
-            '(e.g. env.bool("CAPY_AUTH_SIGNUP_OPEN", default=True)).',
-            id="capy_auth.E002",
+    """The CAPY_AUTH_ starting values must be ones the settings record accepts: a string
+    such as "false" from the environment would make the signup and settings pages fail."""
+    errors = []
+    signup_open = getattr(settings, "CAPY_AUTH_SIGNUP_OPEN", True)
+    if not isinstance(signup_open, bool):
+        errors.append(
+            Error(
+                f"CAPY_AUTH_SIGNUP_OPEN must be True or False, not {signup_open!r}.",
+                hint="When it comes from the environment, read it as a true/false value "
+                '(e.g. env.bool("CAPY_AUTH_SIGNUP_OPEN", default=True)).',
+                id="capy_auth.E002",
+            )
         )
-    ]
+    breached = getattr(
+        settings, "CAPY_AUTH_BREACHED_PASSWORD_CHECK", BreachedPasswordCheck.EVERYONE
+    )
+    if breached not in BreachedPasswordCheck.values:
+        errors.append(
+            Error(
+                f"CAPY_AUTH_BREACHED_PASSWORD_CHECK must be one of "
+                f"{', '.join(BreachedPasswordCheck.values)}, not {breached!r}.",
+                id="capy_auth.E002",
+            )
+        )
+    return errors
 
 
 def security_settings():

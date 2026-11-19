@@ -215,8 +215,26 @@ In a project made from capy-project, with its database running
      ALLAUTH_TRUSTED_PROXY_COUNT = 1 if env.bool("DJANGO_BEHIND_PROXY", default=False) else 0
      ```
 
-     capy-project's password rules (`AUTH_PASSWORD_VALIDATORS`: 12 characters minimum,
-     no common or all-digit passwords, no composition rules) stay as they are, and
+   - **Breached passwords:** add capy-auth's check to the end of capy-project's
+     `AUTH_PASSWORD_VALIDATORS` (12 characters minimum, no common or all-digit
+     passwords, no composition rules: those stay as they are):
+
+     ```python
+     AUTH_PASSWORD_VALIDATORS = [
+         ...,
+         {"NAME": "capy_auth.passwords.breached.BreachedPasswordValidator"},
+     ]
+     ```
+
+     It checks each new password (signup, change, reset, the admin's password forms)
+     against Have I Been Pwned's list of breached passwords (NIST SP 800-63B). Only the
+     first 5 characters of the password's SHA-1 hash are sent, over HTTPS with a
+     3-second timeout, to `api.pwnedpasswords.com`, so the server must be able to reach
+     it. When the check is on and the service can't be reached, the password is refused
+     with a message to try again in a few minutes (it fails closed); admins choose who is
+     checked on the capy-auth settings page, and can switch it off during a long outage.
+     `createsuperuser` checks it too; it offers to skip the password rules.
+
      allauth already answers signup, login and reset the same way for known and unknown
      addresses (`ACCOUNT_PREVENT_ENUMERATION`, on by default). To keep that, the reset
      form emails any address typed in (an address with no account is told so), so
@@ -344,6 +362,7 @@ CHANGELOG names it).
 | Setting | Default | Starting value of |
 | --- | --- | --- |
 | `CAPY_AUTH_SIGNUP_OPEN` | `True` | **Signup open:** anyone can create an account. When off, the signup page says signup is closed and creates no accounts. allauth's own `ACCOUNT_SIGNUP_ENABLED = False` also closes it. |
+| `CAPY_AUTH_BREACHED_PASSWORD_CHECK` | `"everyone"` | **Check breached passwords:** `"everyone"`, `"staff"` (staff and superusers only) or `"off"`. New passwords that have appeared in a data breach are refused. While it applies and Have I Been Pwned can't be reached, new passwords are refused too. Needs the validator in `AUTH_PASSWORD_VALIDATORS` (install step 4). |
 
 Settings that must not change while the site runs (secrets, the site's domain, the
 email server) stay in the project's settings and environment. Each starting value must
@@ -385,7 +404,8 @@ What capy-auth logs (never an email's content or address): a warning when an ema
 sent during the request instead of by the worker (the cache or job queue is down, or it
 has attachments) and each time a send fails and will be tried again; an error when a
 queued email is gone from the cache, can't be read, or couldn't be sent after the last
-try.
+try. An error, too, each time Have I Been Pwned can't be reached and a
+new password is refused (never the password or who it was for).
 
 ## Rules that keep it pluggable
 
@@ -924,6 +944,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
 | `src/capy_auth/templates/account/` | allauth pages copied with their inline style removed (compare with allauth's when upgrading it; likewise `send_mail` in `account/adapter.py`, copied from allauth's) |
 | `src/capy_auth/templates/capy_auth/fields/widget.html` | daisyUI's class for each kind of form input |
+| `src/capy_auth/passwords/breached.py` | The breached-password check: asks Have I Been Pwned with a 5-character hash prefix, refuses breached passwords, fails closed |
 | `src/capy_auth/templatetags/capy_auth_forms.py` | The `daisy_widget` filter: adds the classes `widget.html` picks to an input |
 | `src/capy_auth/migrations/` | Database migrations (see Database) |
 | `tests/settings.py` | A tiny stand-in project for the tests, with allauth, capy-project's Content Security Policy, jobs run straight away (as in capy-project's development and tests) and a choice of user model (`TEST_USER_MODEL`) |
@@ -936,9 +957,10 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_password.py` | Checks signup, verification by code, login, logout, password reset and change, end to end |
 | `tests/test_email_password_edges.py` | Edge cases and security: email case and spaces, code limits, rate limits behind a proxy, timing, redirects, reset tokens |
 | `tests/test_background_email.py` | Checks emails go through the job with only a key in it, arrive as allauth built them, are sent once, retried after a mail server failure, and sent at once when the cache or job queue is down |
+| `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, refusing, failing closed, who is checked, the setting and its migration |
 | `tests/test_security_settings_check.py` | Checks the warnings W001 (weakened allauth settings) and W002 (a cache the worker can't share) |
 | `tests/accounts.py` | Shared by the account tests: signing up, logging in, codes and reset links |
-| `tests/conftest.py` | Clears allauth's rate-limit counts before each test; the `ada` user |
+| `tests/conftest.py` | Clears allauth's rate-limit counts before each test, stands in for Have I Been Pwned (no network in tests), and the `ada` user |
 | `tests/helpers.py` | `check_page()`, shared by the tests that request pages: in the layout, under the policy, accessible |
 | `tests/test_app.py` | Checks the app loads from its own package and its migrations are complete |
 | `tests/test_host_rules.py` | Checks the module adds no `check --deploy` warning to a project |
