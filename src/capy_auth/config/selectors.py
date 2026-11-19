@@ -1,8 +1,11 @@
 """Reads capy-auth's settings record, creating it the first time it's needed."""
 
+from allauth.core import context
 from django.conf import settings
 
 from .models import AuthSettings, BreachedPasswordCheck
+
+REQUEST_ATTRIBUTE = "_capy_auth_settings"
 
 
 def starting_values():
@@ -19,8 +22,16 @@ def starting_values():
 
 
 def get_auth_settings():
-    """The settings record; created from starting_values() the first time it's read."""
-    record, _created = AuthSettings.objects.get_or_create(
-        pk=AuthSettings.SINGLETON_ID, defaults=starting_values()
-    )
+    """The settings record; created from starting_values() the first time it's read.
+    Read once per request: allauth's middleware keeps the current request, and the
+    record is kept on it, so a page that asks several times (the password help text is
+    built more than once) still makes one query."""
+    request = context.request
+    record = getattr(request, REQUEST_ATTRIBUTE, None)
+    if record is None:
+        record, _created = AuthSettings.objects.get_or_create(
+            pk=AuthSettings.SINGLETON_ID, defaults=starting_values()
+        )
+        if request is not None:
+            setattr(request, REQUEST_ATTRIBUTE, record)
     return record

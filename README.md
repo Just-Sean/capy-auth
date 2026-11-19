@@ -33,7 +33,8 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   Django admin as the "capy-auth settings" page. capy-auth's account adapter
   (`account/adapter.py`) reads it when allauth asks how to behave, and Django's checks
   (`config/checks.py`) stop a project that forgot to use that adapter or gave a bad
-  starting value. Why the database, not only the project's settings: admins change
+  starting value. The record is read once per request (kept on the request). Why the
+  database, not only the project's settings: admins change
   these while the site runs, without a deploy. Secrets and anything that must not
   change while running stay in the project's settings. The record holds single
   choices (on/off, a level); lists get their own tables in their own sections: the ban
@@ -70,6 +71,13 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
     or Redis was restarted, cleared or full): it isn't sent (an error is logged) and
     the person asks for a new code or reset link.
   - Emails with attachments (allauth's have none) are sent during the request.
+- **Passwords** (`passwords/breached.py`): a Django password validator the project adds
+  to `AUTH_PASSWORD_VALIDATORS`, which reads who to check from the settings record.
+  Why it works this way: Have I Been Pwned's range API with padding, so only a
+  5-character hash prefix leaves the server; it fails closed (Sean's decision), so a
+  breached password can't get in during an outage, and remembers a failure for a minute
+  so an outage costs milliseconds, not a stuck web worker; Python's own HTTPS client,
+  so no new dependency (it ignores proxy settings: see install step 4).
 - **Pages** come from allauth. capy-auth overrides only allauth's page frame and its
   small building blocks, under allauth's own template names:
   `templates/allauth/layouts/base.html` puts every allauth page inside the project's
@@ -226,14 +234,35 @@ In a project made from capy-project, with its database running
      ]
      ```
 
-     It checks each new password (signup, change, reset, the admin's password forms)
-     against Have I Been Pwned's list of breached passwords (NIST SP 800-63B). Only the
-     first 5 characters of the password's SHA-1 hash are sent, over HTTPS with a
-     3-second timeout, to `api.pwnedpasswords.com`, so the server must be able to reach
-     it. When the check is on and the service can't be reached, the password is refused
-     with a message to try again in a few minutes (it fails closed); admins choose who is
-     checked on the capy-auth settings page, and can switch it off during a long outage.
-     `createsuperuser` checks it too; it offers to skip the password rules.
+     It checks each new password (signup, change, reset, the admin's password forms,
+     `createsuperuser`) against Have I Been Pwned's list of breached passwords (NIST SP
+     800-63B). Only the first 5 characters of the password's SHA-1 hash are sent, over
+     HTTPS, to `api.pwnedpasswords.com`; each check has 3 seconds in all. When the check
+     applies and the service can't be reached or answers badly, the password is refused
+     with a message to try again in a few minutes (it fails closed), and for the next
+     minute new passwords are refused at once instead of each waiting on the service.
+     Admins choose who is checked on the capy-auth settings page (Django's checks warn,
+     `capy_auth.W003`, when this line is missing, since the option then does nothing).
+   - **Who is checked:** "everyone" (the default, and recommended) checks every new
+     password. "Staff and superusers" checks only passwords set while the account is
+     already staff or a superuser: a new superuser from `createsuperuser`, staff created
+     in the admin, and users made staff later are **not** checked at that level. Django
+     itself skips password rules in a few places, at any level:
+     `createsuperuser --noinput` (with `DJANGO_SUPERUSER_PASSWORD`), answering "y" to
+     `createsuperuser`'s "bypass password validation" question, and `set_password()` in
+     code.
+   - **Network:** capy-project's web container can already reach
+     `api.pwnedpasswords.com` (only the database and Redis are cut off from the
+     internet). The check doesn't use proxy settings (`HTTPS_PROXY`): behind a
+     firewall, allow direct HTTPS to `api.pwnedpasswords.com:443`, or every new
+     password is refused.
+   - **When Have I Been Pwned is down:** logins still work, but signup, password
+     changes and resets are refused with "try again in a few minutes", and the web
+     log shows "Have I Been Pwned couldn't be reached or answered badly" (once a
+     minute) (`docker compose -f compose.yaml -f compose.prod.yaml logs web`). For a
+     long outage, open the admin's capy-auth settings page, set "Check breached
+     passwords" to **nobody**, and set it back to **everyone** once it's over. Alert
+     on that log line in production.
 
      allauth already answers signup, login and reset the same way for known and unknown
      addresses (`ACCOUNT_PREVENT_ENUMERATION`, on by default). To keep that, the reset
@@ -242,9 +271,9 @@ In a project made from capy-project, with its database running
      few a minute per address.
 
    - **Optional:** the `CAPY_AUTH_` settings in [Settings](#settings) only set starting
-     values. Set one (as `True` or `False`, e.g. `env.bool(...)` when read from the
-     environment, and listed in `.env.example`) only to start differently from its
-     default.
+     values. Set one (as the type its row gives: `True`/`False` or one of the choices,
+     e.g. `env.bool(...)` or `env.str(...)` when read from the environment, and listed
+     in `.env.example`) only to start differently from its default.
 
    **Existing users** (such as a superuser made with `createsuperuser`) are asked for an
    emailed code the first time they log in through capy-auth's pages; the admin's own
@@ -353,7 +382,8 @@ capy-auth settings" to see them read-only). They're kept as one record in the
 database; the admin's history shows who changed what. They only take effect when the
 project uses capy-auth's account adapter (install step 4).
 
-The record is created on the first visit to the signup page or the settings page, with
+The record is created the first time it's needed (the first visit to the signup page
+or the settings page, or the first password check), with
 its starting values from the project's settings below. After that, what admins set
 wins: changing the project's setting no longer has an effect, so change it on the
 settings page instead. An option added in a later release starts from the project's
@@ -362,7 +392,7 @@ CHANGELOG names it).
 | Setting | Default | Starting value of |
 | --- | --- | --- |
 | `CAPY_AUTH_SIGNUP_OPEN` | `True` | **Signup open:** anyone can create an account. When off, the signup page says signup is closed and creates no accounts. allauth's own `ACCOUNT_SIGNUP_ENABLED = False` also closes it. |
-| `CAPY_AUTH_BREACHED_PASSWORD_CHECK` | `"everyone"` | **Check breached passwords:** `"everyone"`, `"staff"` (staff and superusers only) or `"off"`. New passwords that have appeared in a data breach are refused. While it applies and Have I Been Pwned can't be reached, new passwords are refused too. Needs the validator in `AUTH_PASSWORD_VALIDATORS` (install step 4). |
+| `CAPY_AUTH_BREACHED_PASSWORD_CHECK` | `"everyone"` | **Check breached passwords:** `"everyone"` (shown as "everyone"), `"staff"` ("staff and superusers") or `"off"` ("nobody"). New passwords that have appeared in a data breach are refused. While it applies and Have I Been Pwned can't be reached, new passwords are refused too. Needs the validator in `AUTH_PASSWORD_VALIDATORS` (install step 4, which also says who each level covers). |
 
 Settings that must not change while the site runs (secrets, the site's domain, the
 email server) stay in the project's settings and environment. Each starting value must
@@ -404,8 +434,8 @@ What capy-auth logs (never an email's content or address): a warning when an ema
 sent during the request instead of by the worker (the cache or job queue is down, or it
 has attachments) and each time a send fails and will be tried again; an error when a
 queued email is gone from the cache, can't be read, or couldn't be sent after the last
-try. An error, too, each time Have I Been Pwned can't be reached and a
-new password is refused (never the password or who it was for).
+try. An error, too, when Have I Been Pwned can't be reached or answers badly (at most
+once a minute, while new passwords are refused; never the password or who it was for).
 
 ## Rules that keep it pluggable
 
@@ -934,7 +964,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/apps.py` | The app's name, label and admin title |
 | `src/capy_auth/models.py` | Lists the module's database models for Django (each lives in its section) |
 | `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
-| `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`) and Django's checks for the project's setup (`checks.py`: errors E001–E002, warnings W001 for weakened security settings and W002 for a cache the worker can't share) |
+| `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`) and Django's checks for the project's setup (`checks.py`: errors E001–E003, warnings W001 for weakened security settings, W002 for a cache the worker can't share, W003 for a missing breached-password check) |
 | `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, and allauth's pages |
 | `src/capy_auth/templates/capy_auth/account.html` | The "Your account" page |
 | `src/capy_auth/templates/429.html` | allauth's "too many attempts" page, inside the layout |
@@ -957,10 +987,12 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_password.py` | Checks signup, verification by code, login, logout, password reset and change, end to end |
 | `tests/test_email_password_edges.py` | Edge cases and security: email case and spaces, code limits, rate limits behind a proxy, timing, redirects, reset tokens |
 | `tests/test_background_email.py` | Checks emails go through the job with only a key in it, arrive as allauth built them, are sent once, retried after a mail server failure, and sent at once when the cache or job queue is down |
-| `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, refusing, failing closed, who is checked, the setting and its migration |
+| `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |
+| `tests/test_breached_password_pages.py` | Checks it on every page and command that sets a password (signup, change, reset, the admin, `createsuperuser`), and that the settings record is read once per request |
+| `tests/hibp.py` | A stand-in for Have I Been Pwned (padded answers), so no test goes over the network |
 | `tests/test_security_settings_check.py` | Checks the warnings W001 (weakened allauth settings) and W002 (a cache the worker can't share) |
 | `tests/accounts.py` | Shared by the account tests: signing up, logging in, codes and reset links |
-| `tests/conftest.py` | Clears allauth's rate-limit counts before each test, stands in for Have I Been Pwned (no network in tests), and the `ada` user |
+| `tests/conftest.py` | Clears allauth's rate-limit counts before each test, puts the Have I Been Pwned stand-in in place of the real connection, and the `ada` user |
 | `tests/helpers.py` | `check_page()`, shared by the tests that request pages: in the layout, under the policy, accessible |
 | `tests/test_app.py` | Checks the app loads from its own package and its migrations are complete |
 | `tests/test_host_rules.py` | Checks the module adds no `check --deploy` warning to a project |

@@ -9,7 +9,9 @@ def copy_project_setting(apps, schema_editor):
     as a new record does (README: Settings, "Adding an option")."""
     AuthSettings = apps.get_model("capy_auth", "AuthSettings")
     value = getattr(settings, "CAPY_AUTH_BREACHED_PASSWORD_CHECK", "everyone")
-    AuthSettings.objects.update(breached_password_check=value)
+    AuthSettings.objects.using(schema_editor.connection.alias).update(
+        breached_password_check=value
+    )
 
 
 class Migration(migrations.Migration):
@@ -22,7 +24,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='authsettings',
             name='breached_password_check',
-            field=models.CharField(choices=[('off', 'nobody'), ('staff', 'staff only'), ('everyone', 'everyone')], db_default='everyone', help_text="Refuse new passwords that have appeared in a data breach (checked with Have I Been Pwned). While the check is on and the service can't be reached, new passwords aren't accepted; switch it off here during a long outage.", max_length=10, verbose_name='check breached passwords'),
+            field=models.CharField(choices=[('off', 'nobody'), ('staff', 'staff and superusers'), ('everyone', 'everyone')], db_default='everyone', help_text='Refuse new passwords that have appeared in a data breach (checked with Have I Been Pwned). While the check applies and the service can\'t be reached, new passwords aren\'t accepted (logins still work); choose "nobody" here during a long outage. Works only when the project has added capy-auth\'s check to its password rules (AUTH_PASSWORD_VALIDATORS).', max_length=10, verbose_name='check breached passwords'),
         ),
         migrations.AddConstraint(
             model_name='authsettings',

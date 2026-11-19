@@ -7,10 +7,7 @@ from django.core.cache import cache
 
 from capy_auth.passwords import breached
 from tests.accounts import PASSWORD
-
-# Have I Been Pwned's answer for any prefix, in tests: padding lines only (count 0), so
-# no password is found and nothing goes over the network.
-NOTHING_BREACHED = "0018A45C4D1DEF81644B54AB7F969B88D65:0\r\n00D4F6E8FA6EECAD2A3AA415EEC418D38EC:0"
+from tests.hibp import HibpStandIn
 
 
 @pytest.fixture(autouse=True)
@@ -22,8 +19,11 @@ def fresh_rate_limits():
 
 @pytest.fixture(autouse=True)
 def no_real_breach_service(monkeypatch):
-    """Tests never call the real Have I Been Pwned; test_breached_passwords.py fakes it."""
-    monkeypatch.setattr(breached, "fetch_range", lambda prefix: NOTHING_BREACHED)
+    """Tests never reach the real Have I Been Pwned: its connection is a stand-in that
+    answers every prefix with padding only (no password found)."""
+    HibpStandIn.made = []
+    HibpStandIn.response = None
+    monkeypatch.setattr(breached, "HTTPSConnection", HibpStandIn)
 
 
 @pytest.fixture

@@ -10,7 +10,7 @@ class BreachedPasswordCheck(models.TextChoices):
     """Whose new passwords are checked against Have I Been Pwned's breached passwords."""
 
     OFF = "off", _("nobody")
-    STAFF = "staff", _("staff only")
+    STAFF = "staff", _("staff and superusers")
     EVERYONE = "everyone", _("everyone")
 
 
@@ -36,8 +36,10 @@ class AuthSettings(models.Model):
         db_default=BreachedPasswordCheck.EVERYONE,
         help_text=_(
             "Refuse new passwords that have appeared in a data breach (checked with Have "
-            "I Been Pwned). While the check is on and the service can't be reached, new "
-            "passwords aren't accepted; switch it off here during a long outage."
+            "I Been Pwned). While the check applies and the service can't be reached, new "
+            'passwords aren\'t accepted (logins still work); choose "nobody" here during '
+            "a long outage. Works only when the project has added capy-auth's check to its "
+            "password rules (AUTH_PASSWORD_VALIDATORS)."
         ),
     )
 
