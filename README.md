@@ -79,6 +79,17 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   instead of an error, never skipping the limits; `checks.py` stops a production site
   whose email can't be sent (`capy_auth.E004`). The proxy setting for allauth's own
   limits is in the install steps.
+- **Bans** (`bans/`): the ban list (`models.py`: banned email addresses, banned social
+  accounts, and attempts to use a banned address), its admin pages (`admin.py`),
+  reading it (`selectors.py`) and changes it makes (`services.py`: suspending and
+  reactivating accounts, recording attempts). allauth's signup forms build on
+  `forms.py`'s `BanCheck` (the project's `ACCOUNT_SIGNUP_FORM_CLASS`), which treats a
+  banned address as one that already has an account, so the page never shows the ban.
+  The account adapter records attempts, refuses to confirm a banned address and sends a
+  banned address only the ban notice. `checks.py` is the startup check E005. Why this
+  way: refusing a banned address on the page would let anyone test which addresses are
+  banned; only the address's owner is told, by email. Social accounts are checked by
+  capy-auth's social login support (a later release).
 - **Passwords** (`passwords/breached.py`): a Django password validator the project adds
   to `AUTH_PASSWORD_VALIDATORS`, which reads who to check from the settings record.
   Why it works this way: Have I Been Pwned's range API with padding, so only a
@@ -252,6 +263,10 @@ In a project made from capy-project, with its database running
      # Name people by their email in messages and emails, not the username allauth
      # makes up for them.
      ACCOUNT_USER_DISPLAY = "capy_auth.account.adapter.user_display"
+     # Checks the ban list at signup without showing the ban on the page. Without it,
+     # Django's checks stop with capy_auth.E005. A project with its own signup form
+     # bases it on this class instead.
+     ACCOUNT_SIGNUP_FORM_CLASS = "capy_auth.bans.forms.BanCheck"
      # Log in with an email address; sign up with just email and password (allauth
      # fills in the username).
      ACCOUNT_LOGIN_METHODS = {"email"}
@@ -463,6 +478,36 @@ check in `config/checks.py`, and, in the same migration, a `RunPython` step that
 `getattr(settings, "CAPY_AUTH_…", default)` into the existing record (using
 `apps.get_model`, with `migrations.RunPython.noop` as the reverse).
 
+## Ban list
+
+Staff ban people in the Django admin, under **Capy Auth**. Managing bans needs the ban
+list's permissions and permission to change accounts (superusers have both), since
+banning and lifting bans change accounts.
+
+- **Banned email addresses:** add an address (capitals and spaces don't matter) and an
+  optional reason (staff only). Saving it suspends every account whose own email, or
+  one of whose confirmed addresses, is that address: the account is deactivated, never
+  deleted, its sessions end on its next page load, and it gets a "your account has been
+  suspended" email. The ban page lists the accounts it suspended. A suspended account
+  signing in with the right password sees "Account suspended".
+- **What a banned address can't do:** sign up (the page looks like any signup; no
+  account is made) or be added to an account (the page looks normal; it can't be
+  confirmed). Instead of any code, link or other email, the address gets one notice:
+  "This address can't be used for an account here". Each try is recorded under
+  **Banned address attempts** (the address, signup or adding it, the account if signed
+  in, the IP address, the time) and logged as a warning. Nothing happens to the account
+  automatically: staff look and decide, and may delete old entries (they hold IP
+  addresses, which are personal data).
+- **Reversing a ban:** select bans in the list and choose **Lift the selected bans and
+  reactivate the accounts they suspended**. An account another ban still holds stays
+  suspended. Deleting a ban lifts it without reactivating anyone; reactivate an account
+  by hand by ticking "Active" on its user page.
+- **Deleting accounts:** staff with Django's "delete user" permission can delete an
+  account on its user page as usual. The ban is on the address, so it still applies.
+- **Banned social accounts:** a provider (allauth's provider ID, e.g. `google`) and the
+  person's ID there. They're stored now and checked once capy-auth's social login
+  support arrives.
+
 ## Upgrading
 
 Install the new tag (the same `uv add … --tag vX.Y.Z` line), then run
@@ -493,7 +538,8 @@ sent during the request instead of by the worker (the cache or job queue is down
 has attachments) and each time a send fails and will be tried again; an error when a
 queued email is gone from the cache, can't be read, or couldn't be sent after the last
 try. An error, with the cache's own error, for each request that gets the "temporarily
-unavailable" page because the cache is down. An error, too, when Have I Been Pwned can't be reached or answers badly (at most
+unavailable" page because the cache is down. A warning when a banned address is tried,
+naming the recorded attempt's ID (the address is in the admin, not the log). An error, too, when Have I Been Pwned can't be reached or answers badly (at most
 once a minute, while new passwords are refused; never the password or who it was for).
 
 ## Rules that keep it pluggable
@@ -1034,6 +1080,9 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/templates/account/` | allauth pages copied with their inline style removed (compare with allauth's when upgrading it; likewise `send_mail` in `account/adapter.py`, copied from allauth's) |
 | `src/capy_auth/templates/capy_auth/fields/widget.html` | daisyUI's class for each kind of form input |
 | `src/capy_auth/limits/` | django-axes counting by the account's main email (`axes.py`), the "temporarily unavailable" page while the cache is down (`middleware.py`, `templates/capy_auth/unavailable.html`), the email check E004 (`checks.py`) |
+| `src/capy_auth/bans/` | The ban list: its tables (`models.py`), admin pages (`admin.py`), reading it (`selectors.py`), suspending, reactivating and recording attempts (`services.py`), the signup check (`forms.py`) and the startup check E005 (`checks.py`) |
+| `src/capy_auth/templates/capy_auth/email/` | The ban notice and "your account has been suspended" emails |
+| `src/capy_auth/templates/account/account_inactive.html` | allauth's inactive-account page, saying the account is suspended |
 | `src/capy_auth/templates/capy_auth/locked_out.html` | django-axes' "too many attempts" lockout page, inside the layout (`AXES_LOCKOUT_TEMPLATE`) |
 | `tests/client_ip.py` | A small copy of capy-project's `client_ip`, so the tests find the visitor's address as capy-project does behind its proxy |
 | `src/capy_auth/passwords/breached.py` | The breached-password check: asks Have I Been Pwned with a 5-character hash prefix, refuses breached passwords, fails closed |
@@ -1050,6 +1099,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_password_edges.py` | Edge cases and security: email case and spaces, code limits, rate limits behind a proxy, timing, redirects, reset tokens |
 | `tests/test_background_email.py` | Checks emails go through the job with only a key in it, arrive as allauth built them, are sent once, retried after a mail server failure, and sent at once when the cache or job queue is down |
 | `tests/test_limits.py` | Checks axes locks out one account (under its main email, however typed), not everyone at an address, and a forged forwarded address doesn't escape; the lockout page; the cache-down page; the email check |
+| `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends and emails, lifting reactivates; the admin permissions; the check E005 |
 | `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |
 | `tests/test_breached_password_pages.py` | Checks it on every page and command that sets a password (signup, change, reset, the admin, `createsuperuser`), and that the settings record is read once per request |
 | `tests/hibp.py` | A stand-in for Have I Been Pwned (padded answers), so no test goes over the network |

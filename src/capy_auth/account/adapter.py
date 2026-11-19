@@ -5,10 +5,13 @@ import secrets
 
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.core import context
+from django.contrib import messages
 from django.contrib.auth.hashers import make_password
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils.translation import gettext_lazy as _
 
+from capy_auth.bans.selectors import is_banned_email
+from capy_auth.bans.services import BANNED_ADDRESS_NOTICE, NOTICES, record_attempt
 from capy_auth.config.selectors import get_auth_settings
 from capy_auth.emails.tasks import queue_email
 
@@ -43,9 +46,33 @@ class AccountAdapter(DefaultAccountAdapter):
         make_password(secrets.token_urlsafe())
         super().send_account_already_exists_mail(email)
 
+    def clean_email(self, email):
+        """allauth asks this at signup and when an address is added to an account. A
+        banned address isn't refused here (that would show it's banned): the attempt is
+        recorded for staff, and the ban notice replaces any email sent to it."""
+        email = super().clean_email(email)
+        if is_banned_email(email):
+            record_attempt(email, context.request)
+        return email
+
+    def confirm_email(self, request, email_address):
+        """A banned address is never confirmed, so it can't be added to an account."""
+        if is_banned_email(email_address.email):
+            self.add_message(
+                request,
+                messages.ERROR,
+                "account/messages/email_confirmation_failed.txt",
+                {"email": email_address.email},
+            )
+            return False
+        return super().confirm_email(request, email_address)
+
     def send_mail(self, template_prefix, email, context_data):
         """Builds the email as allauth does, then has the background worker send it
-        (capy_auth/emails/)."""
+        (capy_auth/emails/). A banned address only ever gets the ban notice (or, for a
+        suspended account, the suspension notice): never a code or a link."""
+        if template_prefix not in NOTICES and is_banned_email(email):
+            template_prefix, context_data = BANNED_ADDRESS_NOTICE, {}
         request = context.request
         mail_context = {
             "request": request,

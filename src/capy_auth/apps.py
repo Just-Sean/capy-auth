@@ -11,6 +11,7 @@ class CapyAuthConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
 
     def ready(self):
+        from capy_auth.bans.checks import check_signup_form
         from capy_auth.config.checks import (
             check_account_adapter,
             check_breached_password_validator,
@@ -26,3 +27,4 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_email_queue)
         checks.register(check_breached_password_validator)
         checks.register(check_email_can_be_sent)
+        checks.register(check_signup_form)

@@ -1,0 +1,5 @@
+{% extends "account/email/base_message.txt" %}
+{% load i18n %}
+{% block content %}{% autoescape off %}{% blocktranslate %}Your account on this site has been suspended, and you can no longer sign in.
+
+If you think this is a mistake, please contact the site's staff.{% endblocktranslate %}{% endautoescape %}{% endblock content %}
