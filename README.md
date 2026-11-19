@@ -65,6 +65,13 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   when a project weakens one of these settings. `urls.py` mounts allauth's pages with
   capy-auth's "Your account" page, where people land after logging in, and
   `templates/429.html` puts allauth's "too many attempts" page inside the layout.
+- **MFA** (`mfa/`): allauth's MFA app with capy-auth's adapter (`adapter.py`), which
+  encrypts every secret allauth stores (`crypto.py`: Fernet from `cryptography`, keys
+  from `CAPY_AUTH_ENCRYPTION_KEYS`; why Fernet: a hard-to-misuse recipe with built-in
+  key changes, and the library comes with allauth's MFA anyway; why a key of its own,
+  not one made from `SECRET_KEY`: a `SECRET_KEY` leak or change would then expose or
+  break everyone's MFA too). `checks.py` holds E007, E008 and W005. MFA pages are
+  allauth's, inside the layout; changes ask for the password again.
 - **Sessions** (`sessions/`, `templates/usersessions/`):
   - **Asking again:** allauth asks for the password again, on its "Confirm it's you"
     page (rewritten by capy-auth), before sensitive changes: adding, removing or
@@ -218,6 +225,7 @@ In a project made from capy-project, with its database running
        "allauth",
        "allauth.account",
        "allauth.usersessions",  # the "Signed-in devices" page
+       "allauth.mfa",  # two-step sign-in
        ...,
    ]
    MIDDLEWARE = [
@@ -366,6 +374,49 @@ In a project made from capy-project, with its database running
      # could use up the login and signup limits for the whole site.
      ALLAUTH_TRUSTED_PROXY_COUNT = 1 if env.bool("DJANGO_BEHIND_PROXY", default=False) else 0
      ```
+
+   - **Two-step sign-in (MFA):** authenticator apps and recovery codes, optional for
+     people (feature 13 makes it required for staff). capy-auth's MFA adapter encrypts
+     every secret before allauth stores it; without the adapter or allauth's MFA app,
+     Django's checks stop the site (`capy_auth.E008`):
+
+     ```python
+     MFA_ADAPTER = "capy_auth.mfa.adapter.MFAAdapter"
+     MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+     MFA_RECOVERY_CODES_SHOW_ONCE = True  # shown once, then only how many are left
+     # The key that encrypts MFA secrets (see below). env.list reads a comma-separated
+     # value; the first key encrypts, every key decrypts.
+     CAPY_AUTH_ENCRYPTION_KEYS = env.list("CAPY_AUTH_ENCRYPTION_KEYS", default=[])
+     ```
+
+   - **The encryption key (whoever sets up the server does this once).** MFA secrets
+     (the key each authenticator app shares with the site, and the seed of recovery
+     codes) are stored encrypted, so a copy of the database alone doesn't give them
+     away. The key lives on the server, never in the database. Generate one:
+
+     ```bash
+     uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+     ```
+
+     Put it in `.env.production` as `CAPY_AUTH_ENCRYPTION_KEYS=<the key>` (and a line
+     `CAPY_AUTH_ENCRYPTION_KEYS=` in `.env.example`), and **back it up with the
+     project's other secrets** (wherever `.env.production` is kept, e.g. a password
+     manager), **not with the database backup**: the two together would undo the
+     encryption. Nobody else ever sees or types it.
+     - **In development**, without it, a stand-in key made from `SECRET_KEY` is used,
+       and Django's checks say so every time the site starts (`capy_auth.W005`), with
+       the command above.
+     - **In production**, without it or with a malformed one, the site doesn't start
+       (`capy_auth.E007`), and the message says how to fix it.
+     - The capy-auth settings page in the admin shows whether it's set (never the key).
+     - **Changing it** (after a leak, or routinely): generate a new key and put it
+       first, keeping the old one after it (`CAPY_AUTH_ENCRYPTION_KEYS=<new>,<old>`):
+       new secrets use the new key, old ones still work. After a leak, also ask people
+       to set up their authenticator apps again, then drop the old key.
+     - **If it's lost**, the stored secrets can't be read: everyone's authenticator app
+       and recovery codes stop working (people sign in with their password and email
+       code and set them up again; the site logs an error naming the setting). Nobody
+       loses their account.
 
    - **Breached passwords:** add capy-auth's check to the end of capy-project's
      `AUTH_PASSWORD_VALIDATORS` (12 characters minimum, no common or all-digit
@@ -553,7 +604,10 @@ In a project made from capy-project, with its database running
    count); add or remove another within 5 minutes and it doesn't ask again. Sign in to
    the same account from a second browser, then in the first open "Signed-in devices"
    from "Your account": both are listed, this one marked "This device". Choose "Sign
-   out everywhere else" and reload the second browser: it's signed out. To check the
+   out everywhere else" and reload the second browser: it's signed out. Open "Two-step
+   sign-in", set up an authenticator app with its QR code, save the recovery codes,
+   then sign out and in: it asks for a code (the app's, or a recovery code, which works
+   only once). To check the
    staff email, add a user in the admin, open the "An account was created for you"
    email in the `runserver` output, choose a password with its link, and sign in
    without another code.
@@ -1218,6 +1272,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
 | `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`) and Django's checks for the project's setup (`checks.py`: errors E001–E003, warnings W001 for weakened security settings, W002 for a cache the worker can't share, W003 for a missing breached-password check) |
 | `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), and allauth's pages |
+| `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), and the startup checks E007, E008 and W005 (`checks.py`) |
 | `src/capy_auth/sessions/` | Recording every sign-in (`recording.py`), the "Signed-in devices" page's view (`views.py`), and the startup checks E006 and W004 (`checks.py`) |
 | `src/capy_auth/templates/usersessions/` | The "Signed-in devices" page at `accounts/sessions/` and its message (rewritten from allauth's; compare with allauth's when upgrading it, as for `account/`) |
 | `src/capy_auth/templates/capy_auth/account.html` | The "Your account" page |
@@ -1254,6 +1309,8 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_addresses.py` | Checks the email page (add with a code, make primary, remove), the existing-users migration, `mark_email_verified` and the email for accounts staff create |
 | `tests/test_email_addresses_edges.py` | Edge cases: blank and shared addresses, the migration on real migration history, the email page's limits, the real admin "add user" page, when a reset does and doesn't confirm |
 | `tests/test_sessions.py` | Checks asking for the password again (the 5-minute window), the "Signed-in devices" page, signing out everywhere else, and E006/W004 |
+| `tests/test_mfa.py` | Checks setting up an authenticator app, signing in with its code, recovery codes (shown once, each usable once), encrypted storage, changing and losing the key, the checks and the settings page's status line |
+| `tests/totp.py` | Authenticator-app codes worked out as the apps do (RFC 6238), so the tests prove a real app works |
 | `tests/test_sessions_edges.py` | Edge cases: every action that asks again, the 5-minute edge, sessions from the admin's login and from before the install, password changes, other users, hostile or long browser descriptions, IPv6 |
 | `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends, removes the password (signing every session out, recorded or not, in any store) and emails; lifting reactivates and emails a link to choose a new password; the admin permissions; the check E005 |
 | `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |

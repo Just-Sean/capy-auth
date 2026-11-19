@@ -9,6 +9,7 @@ requires-python = ">=3.14"
 dependencies = [
     "django>=6.1,<7",          # the Django versions this module supports
     "django-allauth[mfa,socialaccount]>=65.22.1,<66",  # accounts, MFA and social login
+    "cryptography>=50.0.2,<51",  # encrypts MFA secrets (Fernet); allauth's MFA needs it too
 ]
 classifiers = [
     "Framework :: Django",

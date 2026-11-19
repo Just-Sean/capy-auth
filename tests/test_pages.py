@@ -15,7 +15,6 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.template import Context, Template
 from django.template.base import Origin
-from django.template.loader import get_template
 from django.test import Client
 from django.urls import NoReverseMatch, reverse
 
@@ -25,7 +24,7 @@ from tests.test_csp import blocked_in
 ALLAUTH_TEMPLATES = Path(allauth.__file__).resolve().parent / "templates"
 CAPY_AUTH_TEMPLATES = Path(__file__).resolve().parent.parent / "src/capy_auth/templates"
 # The allauth apps the stand-in project installs; each later feature adds its own.
-CHECKED_FOLDERS = ("allauth", "account", "usersessions")
+CHECKED_FOLDERS = ("allauth", "account", "usersessions", "mfa")
 PASSWORD = secrets.token_urlsafe()
 
 # allauth's account pages that need no link key, as seen logged out and logged in.
@@ -43,6 +42,7 @@ LOGGED_IN_PAGES = [
     "account_reauthenticate",
     "account_logout",
     "usersessions_list",
+    "mfa_index",
 ]
 # allauth pages capy-auth copies to change one thing: the inline style the policy blocks.
 COPIED_PAGES = ["account/email_change.html", "account/phone_change.html"]
@@ -410,11 +410,15 @@ def allauth_template_names():
 def test_every_allauth_template_in_use_has_nothing_the_policy_blocks():
     # The template Django actually uses for each name: capy-auth's where it overrides
     # allauth's, allauth's otherwise. Emails aren't pages, so the policy doesn't apply.
+    # Read as files, not compiled: some (passkeys, feature 12) need apps not installed.
     problems = {}
     for name in allauth_template_names():
         if "/email/" in name:
             continue
-        source = Path(get_template(name).origin.name).read_text(encoding="utf-8")
+        override = CAPY_AUTH_TEMPLATES / name
+        source = (override if override.exists() else ALLAUTH_TEMPLATES / name).read_text(
+            encoding="utf-8"
+        )
         if blocked := blocked_in(source):
             problems[name] = blocked
     assert problems == {}
