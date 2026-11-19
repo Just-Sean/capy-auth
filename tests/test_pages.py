@@ -25,7 +25,7 @@ from tests.test_csp import blocked_in
 ALLAUTH_TEMPLATES = Path(allauth.__file__).resolve().parent / "templates"
 CAPY_AUTH_TEMPLATES = Path(__file__).resolve().parent.parent / "src/capy_auth/templates"
 # The allauth apps the stand-in project installs; each later feature adds its own.
-CHECKED_FOLDERS = ("allauth", "account")
+CHECKED_FOLDERS = ("allauth", "account", "usersessions")
 PASSWORD = secrets.token_urlsafe()
 
 # allauth's account pages that need no link key, as seen logged out and logged in.
@@ -42,6 +42,7 @@ LOGGED_IN_PAGES = [
     "account_change_password",
     "account_reauthenticate",
     "account_logout",
+    "usersessions_list",
 ]
 # allauth pages capy-auth copies to change one thing: the inline style the policy blocks.
 COPIED_PAGES = ["account/email_change.html", "account/phone_change.html"]
@@ -362,6 +363,15 @@ REWRITTEN_PAGES = {
     ),
     "account/password_reset_from_key_done.html": (
         "84a7e4eeba8bf3ecfc5fae59f8658e7ba6edd9f521383e4d87afe42b55697707"
+    ),
+    "account/reauthenticate.html": (
+        "9e2a69f8965f618e01c6cb8efcb51ace5f6d3da49b5ef94b7f5f769730a55b85"
+    ),
+    "account/base_reauthenticate.html": (
+        "3c03c732d9f8e91f5defe4d03e6286e34db65b0a6b0000e60a129cd34173b5fc"
+    ),
+    "usersessions/usersession_list.html": (
+        "232143c3f98d9d9fd03c97fb0516f9af0a61cf069edf123e2ed90ae5fa814808"
     ),
 }
 

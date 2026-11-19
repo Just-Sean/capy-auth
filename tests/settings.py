@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "capy_auth",
     "allauth",
     "allauth.account",
+    "allauth.usersessions",
     "axes",
 ]
 
@@ -49,6 +50,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "allauth.usersessions.middleware.UserSessionsMiddleware",
     "capy_auth.limits.middleware.CacheDownMiddleware",
     "axes.middleware.AxesMiddleware",  # last, as in capy-project
 ]

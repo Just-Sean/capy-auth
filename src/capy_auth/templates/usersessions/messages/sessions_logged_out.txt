@@ -1,0 +1,1 @@
+{% load i18n %}{% translate "Signed out everywhere else. This device is still signed in." %}

@@ -1,0 +1,24 @@
+{% extends "account/base_reauthenticate.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's account/reauthenticate.html: the same form,
+  with the field's own label instead of a separate "Enter your password:" line. Check
+  allauth's original when upgrading allauth (a test fails when it changes).
+{% endcomment %}
+{% load allauth %}
+{% load i18n %}
+{% block reauthenticate_content %}
+    {% url 'account_reauthenticate' as action_url %}
+    {% element form form=form method="post" action=action_url %}
+        {% slot body %}
+            {% csrf_token %}
+            {% element fields form=form %}
+            {% endelement %}
+            {{ redirect_field }}
+        {% endslot %}
+        {% slot actions %}
+            {% element button type="submit" tags="primary,reauthenticate" %}
+                {% translate "Confirm" %}
+            {% endelement %}
+        {% endslot %}
+    {% endelement %}
+{% endblock %}

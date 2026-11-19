@@ -1,0 +1,74 @@
+{% extends "usersessions/base_manage.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's usersessions/usersession_list.html,
+  rewritten rather than copied: each session is a card that wraps on phones (the
+  browser's description in small print, wrapping at spaces), times are plain dates
+  with their time zone (no django.contrib.humanize needed), and the wording matches
+  capy-auth's. It keeps allauth's form: a POST to this page signs out the other
+  sessions; with only this session, the button posts to the logout page and signs you
+  out, as allauth's does. capy-auth's view records this session first if nobody did,
+  so it's always listed. Check allauth's original when upgrading allauth (a test
+  fails when it changes).
+{% endcomment %}
+{% load allauth i18n %}
+{% block head_title %}
+    {% translate "Signed-in devices" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 tags="usersessions,list" %}
+            {% translate "Signed-in devices" %}
+        {% endelement %}
+        {% url 'account_change_password' as change_password_url %}
+        <p>
+            {% blocktranslate %}Where your account is signed in. If you see one you don’t recognize, sign out everywhere else, then <a class="link" href="{{ change_password_url }}">change your password</a>.{% endblocktranslate %}
+        </p>
+        <ul class="flex flex-col gap-3">
+            {% for session in sessions %}
+                <li class="card card-border bg-base-100">
+                    <div class="card-body gap-1">
+                        <p class="flex flex-wrap items-center gap-2">
+                            {% if session.is_current %}
+                                <span class="badge badge-primary">{% translate "This device" %}</span>
+                            {% endif %}
+                            <span>
+                                {% translate "Signed in" %}
+                                <time datetime="{{ session.created_at|date:'c' }}">{{ session.created_at|date:"DATETIME_FORMAT" }} {{ session.created_at|date:"T" }}</time>
+                            </span>
+                        </p>
+                        {% if show_last_seen_at %}
+                            <p>
+                                {% translate "Last seen" %}
+                                <time datetime="{{ session.last_seen_at|date:'c' }}">{{ session.last_seen_at|date:"DATETIME_FORMAT" }} {{ session.last_seen_at|date:"T" }}</time>
+                            </p>
+                        {% endif %}
+                        <p>
+                            {% blocktranslate with ip=session.ip %}IP address: {{ ip }}{% endblocktranslate %}
+                        </p>
+                        <p class="text-sm break-words">{{ session.user_agent|default:_("Unknown browser") }}</p>
+                    </div>
+                </li>
+            {% empty %}
+                <li>{% translate "No sign-ins are recorded yet." %}</li>
+            {% endfor %}
+        </ul>
+        {% if session_count > 1 %}
+            {% url 'usersessions_list' as action_url %}
+            {% translate "Sign out everywhere else" as button_label %}
+        {% else %}
+            <p>{% translate "Only this device is signed in." %}</p>
+            {% url 'account_logout' as action_url %}
+            {% translate "Sign out" as button_label %}
+        {% endif %}
+        <form method="post" action="{{ action_url }}">
+            {% csrf_token %}
+            <button class="btn {% if session_count > 1 %}btn-primary{% else %}btn-outline{% endif %}"
+                    type="submit">
+                {{ button_label }}
+            </button>
+        </form>
+        <p>
+            <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
+        </p>
+    </div>
+{% endblock content %}

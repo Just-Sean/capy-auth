@@ -18,6 +18,9 @@
             <li>
                 <a class="btn" href="{% url 'account_change_password' %}">{% translate "Change password" %}</a>
             </li>
+            <li>
+                <a class="btn" href="{% url 'usersessions_list' %}">{% translate "Signed-in devices" %}</a>
+            </li>
         </ul>
         <form method="post" action="{% url 'account_logout' %}">
             {% csrf_token %}
