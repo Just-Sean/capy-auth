@@ -161,8 +161,7 @@ def test_the_account_page_needs_a_login_and_links_to_the_account_pages(client, a
     client.force_login(ada)
     page = check_page(client.get(ACCOUNT_PAGE))
     assert "You're signed in as ada@example.com." in page
-    # Managing email addresses comes in a later feature; until then it isn't linked.
-    assert f'href="{reverse("account_email")}"' not in page
+    assert f'href="{reverse("account_email")}"' in page
     assert f'href="{CHANGE_PASSWORD}"' in page
     assert f'action="{LOGOUT}"' in page
 

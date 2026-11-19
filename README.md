@@ -44,7 +44,13 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   [Add it to a project](#add-it-to-a-project): signup with email and password, login by
   email, email verified by a code before the first login (with "send a new code"),
   password reset links that work once for an hour, notification emails, and the same
-  answers for known and unknown addresses. capy-auth's adapter (`account/adapter.py`)
+  answers for known and unknown addresses. People manage their addresses on allauth's
+  email page, linked from "Your account". A completed password reset by link confirms
+  the account's address when it's the account's only one (the link went there, as
+  allauth's reset by code already does). `account/services.py` and
+  `account/receivers.py` do that, confirm an address by hand (`mark_email_verified`)
+  and send the "choose your password" email for accounts staff create in the admin;
+  migration 0004 adds existing users' emails to allauth's list. capy-auth's adapter (`account/adapter.py`)
   names people by their email, words the "too many attempts" message for both logins
   and codes, and hashes a password when someone signs up with a taken email, so that
   answer takes as long as a new account's. Django's checks (`config/checks.py`) warn
@@ -353,7 +359,23 @@ In a project made from capy-project, with its database running
 
    **Existing users** (such as a superuser made with `createsuperuser`) are asked for an
    emailed code the first time they log in through capy-auth's pages; the admin's own
-   login page doesn't ask.
+   login page doesn't ask. capy-auth's migration (step 8) adds their email to allauth's
+   list as unconfirmed. Someone who can't receive the code yet (a superuser on a new
+   server before email is set up) can be confirmed by hand, with their email:
+
+   ```bash
+   uv run python manage.py mark_email_verified you@example.com
+   ```
+
+   It says which account it confirmed, or why it couldn't (no account uses the address,
+   more than one does, or it's on the ban list).
+
+   **Accounts staff create** in the Django admin get an email with a one-time link to
+   choose their password ("An account was created for you"); choosing it confirms their
+   address. The link lasts as long as a password reset link (`PASSWORD_RESET_TIMEOUT`);
+   after that, they use "Forgot your password?". It needs the email on the admin's "add
+   user" form, as capy-project's user admin has (Django's own doesn't ask for one, so
+   nothing is sent). Accounts made in the shell or with `createsuperuser` aren't emailed.
 
 5. **Email.** Signup, verification codes and password resets all send email.
    - **Development** needs nothing: capy-project prints emails, codes included, where
@@ -1119,7 +1141,10 @@ If the repository itself moved, also point git at it:
 | `tests/client_ip.py` | A small copy of capy-project's `client_ip`, so the tests find the visitor's address as capy-project does behind its proxy |
 | `src/capy_auth/passwords/breached.py` | The breached-password check: asks Have I Been Pwned with a 5-character hash prefix, refuses breached passwords, fails closed |
 | `src/capy_auth/templatetags/capy_auth_forms.py` | The `daisy_widget` filter: adds the classes `widget.html` picks to an input |
-| `src/capy_auth/migrations/` | Database migrations (see Database) |
+| `src/capy_auth/account/services.py`, `account/receivers.py` | Confirming an address by hand, the "choose your password" email for accounts staff create, confirming the address on a completed reset |
+| `src/capy_auth/management/commands/mark_email_verified.py` | `manage.py mark_email_verified <email>` |
+| `src/capy_auth/templates/capy_auth/email/account_created_*.txt` | The "An account was created for you" email |
+| `src/capy_auth/migrations/` | Database migrations (see Database); 0004 adds existing users' emails to allauth's list |
 | `tests/settings.py` | A tiny stand-in project for the tests, with allauth, capy-project's Content Security Policy, django-axes as capy-project runs it, jobs run straight away (as in capy-project's development and tests) and a choice of user model (`TEST_USER_MODEL`) |
 | `tests/urls.py` | The stand-in project's URLs: capy-auth's (its own page and allauth's) under `accounts/`, and a page its own tests use |
 | `tests/templates/` | Copies of capy-project's `base.html` and `layout.html`, which the module's pages extend |
@@ -1131,6 +1156,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_password_edges.py` | Edge cases and security: email case and spaces, code limits, rate limits behind a proxy, timing, redirects, reset tokens |
 | `tests/test_background_email.py` | Checks emails go through the job with only a key in it, arrive as allauth built them, are sent once, retried after a mail server failure, and sent at once when the cache or job queue is down |
 | `tests/test_limits.py` | Checks axes locks out one account (under its main email, however typed), not everyone at an address, and a forged forwarded address doesn't escape; the lockout page; the cache-down page; the email check |
+| `tests/test_email_addresses.py` | Checks the email page (add with a code, make primary, remove), the existing-users migration, `mark_email_verified` and the email for accounts staff create |
 | `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends and emails, lifting reactivates; the admin permissions; the check E005 |
 | `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |
 | `tests/test_breached_password_pages.py` | Checks it on every page and command that sets a password (signup, change, reset, the admin, `createsuperuser`), and that the settings record is read once per request |

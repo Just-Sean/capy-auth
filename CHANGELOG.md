@@ -8,3 +8,5 @@ version finishes a change the one before it started), or "nothing".
 ## 0.1.0
 
 - First version. Projects: add it as the README's "Add it to a project" says.
+  Migration 0004 reads every user once (in batches of 1,000) to add their email to
+  allauth's list; on a big users table it takes a while.
