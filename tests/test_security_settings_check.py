@@ -1,9 +1,12 @@
-"""capy-auth's warning (capy_auth.W001) for allauth settings that weaken its security
-choices: a project set up as the README says gets none."""
+"""capy-auth's warnings: W001 for allauth settings that weaken its security choices,
+W002 for a cache the background worker can't share. A project set up as the README says
+gets neither."""
 
 import pytest
 
-from capy_auth.config.checks import check_security_settings
+from capy_auth.config.checks import check_email_queue, check_security_settings
+
+SEPARATE_WORKER = {"default": {"BACKEND": "django_tasks_db.DatabaseBackend"}}
 
 
 def warned_settings():
@@ -41,3 +44,28 @@ def test_a_trusted_client_ip_header_also_does_behind_a_proxy(settings):
     settings.SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     settings.ALLAUTH_TRUSTED_CLIENT_IP_HEADER = "X-Real-IP"
     assert warned_settings() == []
+
+
+def test_jobs_run_at_once_need_no_shared_cache():
+    assert check_email_queue(None) == []
+
+
+@pytest.mark.parametrize(
+    "cache_backend",
+    [
+        "django.core.cache.backends.locmem.LocMemCache",
+        "django.core.cache.backends.dummy.DummyCache",
+        "django.core.cache.backends.db.DatabaseCache",
+        "django.core.cache.backends.filebased.FileBasedCache",
+    ],
+)
+def test_a_separate_worker_with_a_cache_it_cant_share_gets_a_warning(settings, cache_backend):
+    settings.TASKS = SEPARATE_WORKER
+    settings.CACHES = {"default": {"BACKEND": cache_backend}}
+    assert [warning.id for warning in check_email_queue(None)] == ["capy_auth.W002"]
+
+
+def test_a_separate_worker_with_redis_is_fine(settings):
+    settings.TASKS = SEPARATE_WORKER
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache"}}
+    assert check_email_queue(None) == []

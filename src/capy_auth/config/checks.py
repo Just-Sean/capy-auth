@@ -13,6 +13,13 @@ from capy_auth.account.adapter import AccountAdapter
 
 ADAPTER_PATH = "capy_auth.account.adapter.AccountAdapter"
 MAX_RESET_LINK_SECONDS = 60 * 60
+JOBS_RUN_AT_ONCE = "django.tasks.backends.immediate.ImmediateBackend"
+# Caches the web process and a separate worker share, kept in memory (not on disk).
+SHARED_CACHES = {
+    "django.core.cache.backends.redis.RedisCache",
+    "django.core.cache.backends.memcached.PyMemcacheCache",
+    "django.core.cache.backends.memcached.PyLibMCCache",
+}
 
 
 def check_account_adapter(app_configs, **kwargs):
@@ -90,4 +97,23 @@ def check_security_settings(app_configs, **kwargs):
         )
         for name, expected, ok in security_settings()
         if not ok
+    ]
+
+
+def check_email_queue(app_configs, **kwargs):
+    """capy-auth's emails wait in the cache for the worker: with jobs run by a separate
+    worker, a cache only one process sees (or one on disk, or none) loses or stores them
+    (capy_auth/emails/)."""
+    task_backend = settings.TASKS.get("default", {}).get("BACKEND")
+    cache_backend = settings.CACHES["default"]["BACKEND"]
+    if task_backend == JOBS_RUN_AT_ONCE or cache_backend in SHARED_CACHES:
+        return []
+    return [
+        Warning(
+            f"capy-auth's emails wait in the cache for the background worker, but the "
+            f"default cache ({cache_backend}) isn't one the worker shares and keeps in "
+            f"memory, so emails could be lost or written to disk.",
+            hint="Use Redis (as capy-project does) or Memcached for the default cache.",
+            id="capy_auth.W002",
+        )
     ]
