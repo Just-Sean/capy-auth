@@ -1,0 +1,53 @@
+{% load i18n %}
+{% comment %}
+  Every field of an allauth form, with daisyUI classes. Always with a visible label,
+  even where allauth asks for none (unlabeled=True), so screen readers and people who
+  zoom in can tell the fields apart. Django links each input to its help text and
+  errors (aria-describedby="<id>_helptext <id>_error"), so those carry these ids.
+  Errors are in the page's text color with an "Error:" marker: daisyUI's error color is
+  too faint on light themes for text. A group of radios or checkboxes is a fieldset
+  with a legend; any other field is a box with a label.
+{% endcomment %}
+{% for error in attrs.form.non_field_errors %}
+    <div role="alert" class="alert alert-error">{{ error }}</div>
+{% endfor %}
+{% for field in attrs.form.hidden_fields %}
+    {{ field }}
+    {% for error in field.errors %}
+        <div role="alert" class="alert alert-error">
+            {% blocktranslate with name=field.name error=error %}(Hidden field {{ name }}) {{ error }}{% endblocktranslate %}
+        </div>
+    {% endfor %}
+{% endfor %}
+{% for field in attrs.form.visible_fields %}
+{% if field.widget_type == "radioselect" or field.widget_type == "checkboxselectmultiple" %}
+    <fieldset class="fieldset">
+        <legend class="fieldset-legend">{{ field.label }}</legend>
+        {% include "capy_auth/fields/widget.html" %}
+{% elif field.widget_type == "checkbox" %}
+    <div class="fieldset">
+        <label class="label whitespace-normal text-base">
+            {% include "capy_auth/fields/widget.html" %}
+            {{ field.label }}
+        </label>
+{% else %}
+    <div class="fieldset">
+        <label class="fieldset-legend" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {% include "capy_auth/fields/widget.html" %}
+{% endif %}
+        {% if field.help_text %}
+            <div class="label whitespace-normal" id="{{ field.auto_id }}_helptext">{{ field.help_text|safe }}</div>
+        {% endif %}
+        {% if field.errors %}
+            <div id="{{ field.auto_id }}_error">
+                {% for error in field.errors %}
+                    <p><strong>{% translate "Error:" %}</strong> {{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+{% if field.widget_type == "radioselect" or field.widget_type == "checkboxselectmultiple" %}
+    </fieldset>
+{% else %}
+    </div>
+{% endif %}
+{% endfor %}
