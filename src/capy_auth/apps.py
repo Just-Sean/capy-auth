@@ -29,6 +29,7 @@ class CapyAuthConfig(AppConfig):
             check_mfa_setup,
             check_passkey_forms,
             check_passkey_origin,
+            check_staff_can_confirm,
             check_staff_middleware,
         )
         from capy_auth.sessions.checks import check_session_store, check_user_sessions
@@ -48,6 +49,7 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_passkey_origin)
         checks.register(check_passkey_forms)
         checks.register(check_staff_middleware)
+        checks.register(check_staff_can_confirm)
         checks.register(check_admin_login)
         ban_receivers.connect_receivers()
         account_receivers.connect_receivers()

@@ -57,6 +57,7 @@
                 {% endslot %}
             {% endelement %}
         {% endif %}
+        {% include "capy_auth/staff/way_on.html" %}
         <p>
             <a class="link" href="{% url 'mfa_index' %}">{% translate "Done" %}</a>
         </p>

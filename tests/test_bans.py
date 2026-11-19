@@ -747,8 +747,11 @@ def test_every_browser_and_an_admin_session_are_signed_out(superuser_client, ban
     admin = two_step_client(mallory)
     assert admin.get("/admin/").status_code == 200
     ban_and_lift(ban_in_admin, superuser_client)
-    assert [b.get(ACCOUNT_PAGE).status_code for b in browsers] == [302, 302, 302]
-    assert admin.get("/admin/").status_code == 302
+    # Sent to sign in, signed out: not to two-step sign-in, as a signed-in staff
+    # member without it would be (the ban removed it).
+    sign_in = reverse("account_login")
+    assert all(b.get(ACCOUNT_PAGE).url.startswith(sign_in) for b in browsers)
+    assert admin.get(ACCOUNT_PAGE).url.startswith(sign_in)
 
 
 @pytest.mark.django_db
