@@ -49,13 +49,45 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-# Differs from capy-project on purpose, for now: capy-project also runs its per-address
-# login limit and django-axes before the login backend (config/settings/users.py). The
-# capy-auth feature that makes allauth work with them adds them here too.
-AUTHENTICATION_BACKENDS = ["allauth.account.auth_backends.AuthenticationBackend"]
+# As the README tells a project: allauth's backend for logins, Django's for the admin's
+# login until capy-auth sends it through allauth. Differs from capy-project on purpose,
+# for now: capy-project also runs its per-address login limit and django-axes first
+# (config/settings/users.py); the capy-auth feature that makes allauth work with them
+# adds them here too.
+AUTHENTICATION_BACKENDS = [
+    "allauth.account.auth_backends.AuthenticationBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
 
-# capy-auth's account adapter, as the README tells a project to set it.
+# capy-auth's allauth settings, exactly as the README's "Add it to a project" gives them.
 ACCOUNT_ADAPTER = "capy_auth.account.adapter.AccountAdapter"
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_RESEND = True
+ACCOUNT_SESSION_REMEMBER = True
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+ACCOUNT_REAUTHENTICATION_REQUIRED = True
+ACCOUNT_USER_DISPLAY = "capy_auth.account.adapter.user_display"
+PASSWORD_RESET_TIMEOUT = 60 * 60  # reset links work for 1 hour
+# Not behind a proxy here; projects behind one set 1 (README).
+ALLAUTH_TRUSTED_PROXY_COUNT = 0
+
+# capy-project's password rules (config/settings/users.py).
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 12},
+    },
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+# Email, kept in memory (Django's test runner also collects it in mail.outbox).
+MAILERS = {"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
+DEFAULT_FROM_EMAIL = "accounts@example.com"
 
 ROOT_URLCONF = "tests.urls"
 

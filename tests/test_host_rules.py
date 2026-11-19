@@ -19,6 +19,8 @@ PRODUCTION_SECURITY = {
     "SESSION_COOKIE_SECURE": True,
     "CSRF_COOKIE_SECURE": True,
     "X_FRAME_OPTIONS": "DENY",
+    # capy-project's production email (an SMTP server, from EMAIL_URL).
+    "MAILERS": {"default": {"BACKEND": "django.core.mail.backends.smtp.EmailBackend"}},
 }
 CLICKJACKING_MIDDLEWARE = "django.middleware.clickjacking.XFrameOptionsMiddleware"
 

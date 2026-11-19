@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% comment %}
+  allauth's "too many requests" page (it renders 429.html when one of its rate limits is
+  hit), inside the project's layout instead of a bare page. A project can replace it
+  with its own templates/429.html.
+{% endcomment %}
+{% load i18n %}
+{% block title %}{% translate "Too many attempts" %}{% endblock %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        <h1 class="text-2xl font-bold">{% translate "Too many attempts" %}</h1>
+        <p>{% translate "There have been too many attempts in a short time. Please wait a few minutes, then try again." %}</p>
+    </div>
+{% endblock %}
