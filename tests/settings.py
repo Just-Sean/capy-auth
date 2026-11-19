@@ -62,13 +62,20 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
-# capy-project's django-axes settings (config/settings/users.py), plus capy-auth's line.
+# capy-project's django-axes settings (config/settings/users.py; its client_ip copied
+# small in tests/client_ip.py), plus capy-auth's two lines.
+BEHIND_PROXY = False  # capy-project's setting; tests switch it on
 AXES_FAILURE_LIMIT = 5
 AXES_COOLOFF_TIME = timedelta(minutes=15)
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True
 AXES_ENABLE_RETRY_AFTER_HEADER = True
+AXES_CLIENT_IP_CALLABLE = "tests.client_ip.client_ip"
+AXES_DISABLE_ACCESS_LOG = True
+AXES_SENSITIVE_PARAMETERS = ["username", "ip_address"]
+AXES_VERBOSE = False
 AXES_USERNAME_CALLABLE = "capy_auth.limits.axes.login_name"
+AXES_LOCKOUT_TEMPLATE = "capy_auth/locked_out.html"
 
 # capy-auth's allauth settings, exactly as the README's "Add it to a project" gives them.
 ACCOUNT_ADAPTER = "capy_auth.account.adapter.AccountAdapter"

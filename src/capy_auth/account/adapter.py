@@ -25,8 +25,9 @@ class AccountAdapter(DefaultAccountAdapter):
         # allauth shows this both for too many failed logins and when a code has been
         # mistyped too often, so it covers both.
         "too_many_login_attempts": _(
-            "Too many attempts. If you were entering a code, it can't be used any more: "
-            "sign in again to get a new one. Otherwise, try again in a few minutes."
+            "Too many attempts. If you were entering a code, it can’t be used any more: "
+            "sign in again to get a new one. Otherwise, please wait a few minutes, then "
+            "try again."
         ),
     }
 
