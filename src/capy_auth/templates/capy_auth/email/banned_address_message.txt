@@ -1,5 +1,4 @@
-{% extends "account/email/base_message.txt" %}
-{% load i18n %}
-{% block content %}{% autoescape off %}{% blocktranslate %}Someone (perhaps you) tried to use this email address to create an account here, or to add it to an account.
+{% load i18n %}{% autoescape off %}{% blocktranslate with site_name=current_site.name %}Someone (perhaps you) asked {{ site_name }} to send an email to this address.
 
-This address can't be used for an account on this site. If you think this is a mistake, please contact the site's staff.{% endblocktranslate %}{% endautoescape %}{% endblock content %}
+This address can't be used for an account on {{ site_name }}, so nothing else will be sent to it. If you think this is a mistake, please contact the site's staff.{% endblocktranslate %}
+{% endautoescape %}

@@ -10,6 +10,7 @@ from django.contrib.auth.hashers import make_password
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils.translation import gettext_lazy as _
 
+from capy_auth.bans.models import AttemptKind
 from capy_auth.bans.selectors import is_banned_email
 from capy_auth.bans.services import BANNED_ADDRESS_NOTICE, NOTICES, record_attempt
 from capy_auth.config.selectors import get_auth_settings
@@ -20,6 +21,9 @@ def user_display(user):
     """How allauth names a person in messages and emails: their email address, which
     they chose, not the username allauth made up for them (ACCOUNT_USER_DISPLAY)."""
     return user.email or user.get_username()
+
+
+EMAIL_NOT_CONFIRMED = _("This email address couldn’t be confirmed.")
 
 
 class AccountAdapter(DefaultAccountAdapter):
@@ -42,28 +46,19 @@ class AccountAdapter(DefaultAccountAdapter):
     def send_account_already_exists_mail(self, email):
         """Signing up with a taken email sends this instead of creating an account. A
         new account's password is hashed, which takes time, so hash one here too:
-        otherwise the faster answer would show the email already has an account."""
+        otherwise the faster answer would show the email already has an account. A banned
+        address comes here too (capy_auth.bans.forms), and is recorded for staff; the
+        email itself becomes the ban notice (send_mail)."""
         make_password(secrets.token_urlsafe())
+        if is_banned_email(email):
+            record_attempt(email, AttemptKind.SIGNUP, context.request)
         super().send_account_already_exists_mail(email)
 
-    def clean_email(self, email):
-        """allauth asks this at signup and when an address is added to an account. A
-        banned address isn't refused here (that would show it's banned): the attempt is
-        recorded for staff, and the ban notice replaces any email sent to it."""
-        email = super().clean_email(email)
-        if is_banned_email(email):
-            record_attempt(email, context.request)
-        return email
-
     def confirm_email(self, request, email_address):
-        """A banned address is never confirmed, so it can't be added to an account."""
+        """A banned address is never confirmed, so it can't be added to an account. The
+        message doesn't say why (allauth's own says another account has it)."""
         if is_banned_email(email_address.email):
-            self.add_message(
-                request,
-                messages.ERROR,
-                "account/messages/email_confirmation_failed.txt",
-                {"email": email_address.email},
-            )
+            self.add_message(request, messages.ERROR, message=EMAIL_NOT_CONFIRMED)
             return False
         return super().confirm_email(request, email_address)
 

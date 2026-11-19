@@ -1,7 +1,8 @@
 """The ban check at signup. allauth builds its signup forms (the website's, the API's
 and social signup's) on the form a project names in ACCOUNT_SIGNUP_FORM_CLASS, so a
 project points that setting here (see the README); capy_auth.E005 stops a site that
-doesn't. A project with its own signup form bases it on BanCheck."""
+doesn't. A project with its own signup form bases it on BanCheck and calls
+super().clean() from its own clean()."""
 
 from django import forms
 
@@ -13,7 +14,9 @@ class BanCheck(forms.Form):
         """A banned address is treated as one that already has an account: allauth
         shows the usual "enter the code" page, creates nothing and sends the "already
         has an account" email, which capy-auth replaces with the ban notice. So the
-        page never shows that the address is banned; only its owner learns that."""
+        page never shows that the address is banned; only its owner learns that. The
+        attempt is recorded when that email would be sent (account/adapter.py), which
+        happens only once the whole form is valid."""
         cleaned_data = super().clean()
         if is_banned_email(cleaned_data.get("email")):
             self.account_already_exists = True

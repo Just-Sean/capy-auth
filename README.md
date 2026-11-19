@@ -85,8 +85,10 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   reactivating accounts, recording attempts). allauth's signup forms build on
   `forms.py`'s `BanCheck` (the project's `ACCOUNT_SIGNUP_FORM_CLASS`), which treats a
   banned address as one that already has an account, so the page never shows the ban.
-  The account adapter records attempts, refuses to confirm a banned address and sends a
-  banned address only the ban notice. `checks.py` is the startup check E005. Why this
+  The account adapter records signup attempts, refuses to confirm a banned address and
+  sends a banned address only the ban notice; `receivers.py` records add-email attempts
+  (allauth's internal `_add_email` signal) and makes sure no banned address is ever
+  stored as confirmed, whatever confirms it. `checks.py` is the startup check E005. Why this
   way: refusing a banned address on the page would let anyone test which addresses are
   banned; only the address's owner is told, by email. Social accounts are checked by
   capy-auth's social login support (a later release).
@@ -97,7 +99,7 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   breached password can't get in during an outage, and remembers a failure for a minute
   so an outage costs milliseconds, not a stuck web worker; Python's own HTTPS client,
   so no new dependency (it ignores proxy settings: see install step 4).
-- **Pages** come from allauth. capy-auth overrides only allauth's page frame and its
+- **Pages** come from allauth. capy-auth overrides mainly allauth's page frame and its
   small building blocks, under allauth's own template names:
   `templates/allauth/layouts/base.html` puts every allauth page inside the project's
   `layout.html` (title, head and content blocks; allauth's scripts go in the head, and
@@ -112,7 +114,9 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   `account/email_change.html` and `account/phone_change.html`, are copied with their
   inline style (which the Content Security Policy blocks) replaced by the `hidden`
   attribute; a test fails if allauth's originals change, and another if allauth gives
-  an element something the override doesn't show.
+  an element something the override doesn't show. `account/account_inactive.html`
+  replaces allauth's inactive-account page with an "Account suspended" page inside the
+  layout (written for capy-auth, not copied).
 - **The stand-in project** (`tests/settings.py`, `tests/urls.py`) is the smallest
   Django project that runs the app, so the tests prove it works outside any one
   project. It has allauth, capy-project's strict Content Security Policy (enforced),
@@ -265,7 +269,8 @@ In a project made from capy-project, with its database running
      ACCOUNT_USER_DISPLAY = "capy_auth.account.adapter.user_display"
      # Checks the ban list at signup without showing the ban on the page. Without it,
      # Django's checks stop with capy_auth.E005. A project with its own signup form
-     # bases it on this class instead.
+     # makes it a subclass of this one instead, and calls super().clean() from its own
+     # clean().
      ACCOUNT_SIGNUP_FORM_CLASS = "capy_auth.bans.forms.BanCheck"
      # Log in with an email address; sign up with just email and password (allauth
      # fills in the username).
@@ -274,7 +279,8 @@ In a project made from capy-project, with its database running
      # The email must be confirmed before the first login, with a code from an email
      # (no confirmation links: a code works on any device and puts no token in a URL).
      # The code page offers a new code. It doesn't offer "use a different email": that
-     # would show only for new accounts, giving away which emails already have one.
+     # would show only for new accounts, giving away which emails already have one, and
+     # it would skip the ban list. Leave ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_CHANGE off.
      ACCOUNT_EMAIL_VERIFICATION = "mandatory"
      ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
      ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_RESEND = True
@@ -480,33 +486,58 @@ check in `config/checks.py`, and, in the same migration, a `RunPython` step that
 
 ## Ban list
 
-Staff ban people in the Django admin, under **Capy Auth**. Managing bans needs the ban
-list's permissions and permission to change accounts (superusers have both), since
-banning and lifting bans change accounts.
+Staff ban people in the Django admin, under **Capy Auth**. Banning and lifting bans
+change accounts, so the ban pages need the account permissions too (superusers have
+them all):
 
-- **Banned email addresses:** add an address (capitals and spaces don't matter) and an
-  optional reason (staff only). Saving it suspends every account whose own email, or
-  one of whose confirmed addresses, is that address: the account is deactivated, never
-  deleted, its sessions end on its next page load, and it gets a "your account has been
-  suspended" email. The ban page lists the accounts it suspended. A suspended account
-  signing in with the right password sees "Account suspended".
+- **Adding or deleting bans:** the ban list's own permission plus "Can change user".
+- **Lifting bans** (the action below): "Can delete banned email address" plus "Can
+  change user".
+- **Looking at bans or attempts:** their "view" permission plus "Can view user" (or
+  "Can change user"). Deleting attempts needs "Can change user" too.
+
+What happens:
+
+- **Banned email addresses:** add an address (capitals, and spaces before or after it,
+  don't matter; an international domain matches its punycode form) and an optional
+  reason (staff only). Adding it suspends every account whose own email, or one of
+  whose confirmed addresses, is that address: the account is deactivated, never
+  deleted, its sessions end on its next page load, and its main email address gets a
+  "your account has been suspended" email. The ban page lists the accounts it
+  suspended. A suspended account signing in with the right password sees "Account
+  suspended". Editing a ban later (its reason) changes no account; its address can't
+  be changed (lift the ban and add a new one). You can't ban one of your own
+  addresses.
+- **Only the exact address is banned:** `mallory+anything@example.com` is a different
+  address. Some providers deliver it to `mallory@example.com` and some don't, so
+  capy-auth doesn't guess.
 - **What a banned address can't do:** sign up (the page looks like any signup; no
-  account is made) or be added to an account (the page looks normal; it can't be
-  confirmed). Instead of any code, link or other email, the address gets one notice:
-  "This address can't be used for an account here". Each try is recorded under
-  **Banned address attempts** (the address, signup or adding it, the account if signed
-  in, the IP address, the time) and logged as a warning. Nothing happens to the account
-  automatically: staff look and decide, and may delete old entries (they hold IP
-  addresses, which are personal data).
+  account is made) or be confirmed on an account (adding it looks normal, but no code
+  is sent and it's never stored as confirmed, whatever tries to confirm it). Instead of
+  any code, link or other email, the address gets one notice: "This address can't be
+  used for an account". Each real signup or add-email try is recorded under **Banned
+  address attempts** (the address, what was tried, the account if signed in, the IP
+  address, the time) and logged as a warning; a password reset isn't recorded. Nothing
+  happens to the account automatically: staff look and decide, and may delete old
+  entries (they hold IP addresses, which are personal data).
 - **Reversing a ban:** select bans in the list and choose **Lift the selected bans and
   reactivate the accounts they suspended**. An account another ban still holds stays
-  suspended. Deleting a ban lifts it without reactivating anyone; reactivate an account
-  by hand by ticking "Active" on its user page.
+  suspended. The admin's history records the lifted bans and each reactivated
+  account. Deleting a ban lifts it without reactivating anyone; reactivate an account
+  by hand by checking the **Active** box on its user page. A suspended account asking
+  for a password reset is told no account was found, as for any inactive account.
+- **Bans come from the admin:** a ban created another way (the shell, fixtures, a data
+  migration) blocks the address but suspends no one; to suspend, call
+  `capy_auth.bans.services.suspend_accounts(ban)` too.
 - **Deleting accounts:** staff with Django's "delete user" permission can delete an
   account on its user page as usual. The ban is on the address, so it still applies.
 - **Banned social accounts:** a provider (allauth's provider ID, e.g. `google`) and the
   person's ID there. They're stored now and checked once capy-auth's social login
   support arrives.
+
+To try it: ban an address in the admin, then sign up with it. The page looks like any
+signup, the `runserver` output shows only the ban notice, and the attempt appears under
+**Banned address attempts**.
 
 ## Upgrading
 
@@ -539,7 +570,8 @@ has attachments) and each time a send fails and will be tried again; an error wh
 queued email is gone from the cache, can't be read, or couldn't be sent after the last
 try. An error, with the cache's own error, for each request that gets the "temporarily
 unavailable" page because the cache is down. A warning when a banned address is tried,
-naming the recorded attempt's ID (the address is in the admin, not the log). An error, too, when Have I Been Pwned can't be reached or answers badly (at most
+with what was tried and the recorded attempt's ID (the address is in the admin, not the
+log). An error, too, when Have I Been Pwned can't be reached or answers badly (at most
 once a minute, while new passwords are refused; never the password or who it was for).
 
 ## Rules that keep it pluggable
@@ -1077,11 +1109,11 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/emails/` | Emails sent by the background worker: the finished email waits in the cache (`sending.py`), the job sends it and retries (`tasks.py`) |
 | `src/capy_auth/templates/allauth/layouts/base.html` | Puts every allauth page inside the project's `layout.html` |
 | `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
-| `src/capy_auth/templates/account/` | allauth pages copied with their inline style removed (compare with allauth's when upgrading it; likewise `send_mail` in `account/adapter.py`, copied from allauth's) |
+| `src/capy_auth/templates/account/` | allauth pages capy-auth replaces: `email_change.html` and `phone_change.html`, copied with their inline style removed (compare with allauth's when upgrading it; likewise `send_mail` in `account/adapter.py`, copied from allauth's), and the suspended page (below) |
 | `src/capy_auth/templates/capy_auth/fields/widget.html` | daisyUI's class for each kind of form input |
 | `src/capy_auth/limits/` | django-axes counting by the account's main email (`axes.py`), the "temporarily unavailable" page while the cache is down (`middleware.py`, `templates/capy_auth/unavailable.html`), the email check E004 (`checks.py`) |
-| `src/capy_auth/bans/` | The ban list: its tables (`models.py`), admin pages (`admin.py`), reading it (`selectors.py`), suspending, reactivating and recording attempts (`services.py`), the signup check (`forms.py`) and the startup check E005 (`checks.py`) |
-| `src/capy_auth/templates/capy_auth/email/` | The ban notice and "your account has been suspended" emails |
+| `src/capy_auth/bans/` | The ban list: its tables (`models.py`), admin pages (`admin.py`), reading it (`selectors.py`), suspending, reactivating and recording attempts (`services.py`), the signup check (`forms.py`), the add-email record and "never confirmed" safeguard (`receivers.py`) and the startup check E005 (`checks.py`) |
+| `src/capy_auth/templates/capy_auth/email/` | The ban notice and "your account has been suspended" emails (plain text; not the `emails/` Python package) |
 | `src/capy_auth/templates/account/account_inactive.html` | allauth's inactive-account page, saying the account is suspended |
 | `src/capy_auth/templates/capy_auth/locked_out.html` | django-axes' "too many attempts" lockout page, inside the layout (`AXES_LOCKOUT_TEMPLATE`) |
 | `tests/client_ip.py` | A small copy of capy-project's `client_ip`, so the tests find the visitor's address as capy-project does behind its proxy |

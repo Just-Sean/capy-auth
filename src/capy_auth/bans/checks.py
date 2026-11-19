@@ -26,7 +26,7 @@ def check_signup_form(app_configs, **kwargs):
             "allauth's signup form doesn't check capy-auth's ban list, so banned "
             "addresses could sign up.",
             hint=f'Set ACCOUNT_SIGNUP_FORM_CLASS = "{SIGNUP_FORM}" (a project with its '
-            "own signup form bases it on that class).",
+            "own signup form makes it a subclass of that class and calls super().clean()).",
             id="capy_auth.E005",
         )
     ]

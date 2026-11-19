@@ -5,11 +5,13 @@ import logging
 
 from allauth.account.adapter import get_adapter
 from allauth.account.utils import user_email
+from allauth.core import context
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ImproperlyConfigured, PermissionDenied
 from django.db import transaction
 
-from .models import AttemptKind, BannedEmail, BannedEmailAttempt
-from .selectors import accounts_held_by_bans, accounts_using, normalized
+from .models import BannedEmailAttempt, normalize_email
+from .selectors import accounts_using, suspended_by_bans
 
 logger = logging.getLogger("capy_auth")
 
@@ -19,46 +21,70 @@ NOTICES = (BANNED_ADDRESS_NOTICE, SUSPENDED_NOTICE)
 
 
 def suspend_accounts(ban):
-    """Deactivates (never deletes) the accounts using the banned address, remembers
-    them on the ban and emails each one. Their sessions end on their next page load:
-    Django doesn't keep inactive accounts logged in. An account another ban already
-    suspended is remembered too, so lifting either ban alone doesn't reactivate it; one
-    staff deactivated by hand is left alone. Returns how many were suspended."""
+    """Deactivates (never deletes) the accounts using the newly banned address,
+    remembers them on the ban and emails each one once the change is saved. Their
+    sessions end on their next page load: Django doesn't keep inactive accounts logged
+    in. An account another ban already suspended is remembered too, so lifting either
+    ban alone doesn't reactivate it; one staff deactivated by hand is left alone.
+    Returns how many were suspended."""
     matches = accounts_using(ban.email)
     accounts = list(matches.filter(is_active=True))
     with transaction.atomic():
         for account in accounts:
             account.is_active = False
             account.save(update_fields=["is_active"])
-        ban.suspended_accounts.add(*accounts, *accounts_held_by_bans(matches))
-    for account in accounts:
-        get_adapter().send_mail(SUSPENDED_NOTICE, user_email(account) or ban.email, {})
+        ban.suspended_accounts.add(*accounts, *matches.filter(pk__in=suspended_by_bans()))
+    addresses = [user_email(account) or ban.email for account in accounts]
+    request = context.request
+    transaction.on_commit(lambda: send_suspension_notices(addresses, request))
     return len(accounts)
 
 
+def send_suspension_notices(addresses, request):
+    """Runs once the suspension is saved, so nobody is told about one that didn't
+    happen. The request is kept for the emails' site name and links."""
+    with context.request_context(request):
+        for address in addresses:
+            get_adapter().send_mail(SUSPENDED_NOTICE, address, {})
+
+
 def lift_bans(bans):
-    """Deletes the bans and reactivates the accounts they suspended, except any still
-    suspended by another ban. Returns how many accounts were reactivated."""
-    bans = list(bans)
-    suspended = {account.pk for ban in bans for account in ban.suspended_accounts.all()}
+    """Deletes the bans (a queryset) and reactivates the accounts they suspended, except
+    any still suspended by another ban. Returns the reactivated accounts."""
     with transaction.atomic():
-        BannedEmail.objects.filter(pk__in=[ban.pk for ban in bans]).delete()
-        accounts = get_user_model().objects.filter(pk__in=suspended, is_active=False)
-        return accounts.exclude(pk__in=accounts_held_by_bans(accounts)).update(is_active=True)
+        suspended = list(bans.values_list("suspended_accounts", flat=True))
+        bans.delete()
+        accounts = list(
+            get_user_model()
+            .objects.filter(pk__in=suspended, is_active=False)
+            .exclude(pk__in=suspended_by_bans())
+        )
+        for account in accounts:
+            account.is_active = True
+            account.save(update_fields=["is_active"])
+    return accounts
 
 
-def record_attempt(email, request):
+def record_attempt(email, kind, request, account=None):
     """Someone tried to sign up with, or add, a banned address. Kept for staff and
     logged as a warning (without the address)."""
-    signed_in = request is not None and request.user.is_authenticated
     attempt = BannedEmailAttempt.objects.create(
-        email=normalized(email),
-        kind=AttemptKind.ADD_EMAIL if signed_in else AttemptKind.SIGNUP,
-        account=request.user if signed_in else None,
-        ip_address=get_adapter().get_client_ip(request) if request is not None else None,
+        email=normalize_email(email), kind=kind, account=account, ip_address=client_ip(request)
     )
     logger.warning(
         "A banned email address was tried (%s); see attempt %s in the admin.",
         attempt.kind,
         attempt.pk,
     )
+
+
+def client_ip(request):
+    """The visitor's address as allauth reads it, or None when it can't be read (no
+    request, or a proxy setup that doesn't match ALLAUTH_TRUSTED_PROXY_COUNT). Never an
+    error: that would happen only for banned addresses and give the ban away."""
+    if request is None:
+        return None
+    try:
+        return get_adapter().get_client_ip(request)
+    except PermissionDenied, ImproperlyConfigured:
+        return None

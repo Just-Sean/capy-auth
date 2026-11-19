@@ -7,11 +7,26 @@ from django.db.models.functions import Lower
 from django.utils.translation import gettext_lazy as _
 
 
-class BannedEmail(models.Model):
-    """An email address nobody can sign up with or add to an account. Saved in
-    lowercase, so it matches however it's typed."""
+def normalize_email(email):
+    """The one way an address is written in the ban list and when checking it: no spaces
+    around it, lowercase, and an international domain in its ASCII form (punycode), so
+    "bücher.example" and "xn--bcher-kva.example" match. A domain that can't be encoded
+    is kept as typed."""
+    email = (email or "").strip().lower()
+    local, at, domain = email.rpartition("@")
+    try:
+        domain = domain.encode("idna").decode("ascii")
+    except UnicodeError:
+        return email
+    return f"{local}{at}{domain}"
 
-    email = models.EmailField(_("email address"))
+
+class BannedEmail(models.Model):
+    """An email address nobody can sign up with or add to an account. Saved normalized
+    (normalize_email), so it matches however it's typed; the database refuses anything
+    not in lowercase."""
+
+    email = models.EmailField(_("email address"), unique=True)
     reason = models.TextField(
         _("reason"), blank=True, help_text=_("A note for staff; never shown to the person.")
     )
@@ -22,14 +37,15 @@ class BannedEmail(models.Model):
         editable=False,
         related_name="+",
         verbose_name=_("accounts it suspended"),
-        help_text=_("Reactivated when the ban is lifted with the admin's lift action."),
     )
 
     class Meta:
         verbose_name = _("banned email address")
         verbose_name_plural = _("banned email addresses")
         constraints = [
-            models.UniqueConstraint(Lower("email"), name="capy_auth_bannedemail_unique"),
+            models.CheckConstraint(
+                condition=models.Q(email=Lower("email")), name="capy_auth_bannedemail_lowercase"
+            ),
         ]
 
     def __str__(self):
@@ -40,7 +56,7 @@ class BannedEmail(models.Model):
         super().save(*args, **kwargs)
 
     def clean(self):
-        self.email = self.email.strip().lower()
+        self.email = normalize_email(self.email)
 
 
 class BannedSocialAccount(models.Model):
@@ -72,8 +88,8 @@ class BannedSocialAccount(models.Model):
 
 
 class AttemptKind(models.TextChoices):
-    SIGNUP = "signup", _("signup")
-    ADD_EMAIL = "add_email", _("adding it to an account")
+    SIGNUP = "signup", _("Sign up")
+    ADD_EMAIL = "add_email", _("Add to an account")
 
 
 class BannedEmailAttempt(models.Model):
@@ -81,7 +97,7 @@ class BannedEmailAttempt(models.Model):
     nothing happens to the account automatically."""
 
     email = models.EmailField(_("banned address tried"))
-    kind = models.CharField(_("tried at"), max_length=20, choices=AttemptKind)
+    kind = models.CharField(_("what was tried"), max_length=20, choices=AttemptKind)
     account = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -92,12 +108,15 @@ class BannedEmailAttempt(models.Model):
         help_text=_("The account that tried to add the address."),
     )
     ip_address = models.GenericIPAddressField(_("IP address"), null=True, blank=True)
-    created_at = models.DateTimeField(_("when"), auto_now_add=True)
+    created_at = models.DateTimeField(_("tried at"), auto_now_add=True)
 
     class Meta:
         verbose_name = _("banned address attempt")
         verbose_name_plural = _("banned address attempts")
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at"], name="capy_auth_attempt_created_idx"),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(kind__in=AttemptKind.values),

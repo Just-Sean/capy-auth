@@ -1,7 +1,8 @@
 {% extends "allauth/layouts/entrance.html" %}
 {% comment %}
   allauth shows this when someone signs in with the right password to an account that
-  isn't active. In capy-auth that means staff suspended it (a ban, or by hand).
+  isn't active. In capy-auth that means staff suspended it (a ban, or by hand). Written
+  for capy-auth, not copied from allauth.
 {% endcomment %}
 {% load i18n %}
 {% load allauth %}
@@ -9,10 +10,15 @@
     {% translate "Account suspended" %}
 {% endblock head_title %}
 {% block content %}
-    {% element h1 %}
-        {% translate "Account suspended" %}
-    {% endelement %}
-    {% element p %}
-        {% translate "This account has been suspended, so you can't sign in. If you think this is a mistake, please contact the site's staff." %}
-    {% endelement %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Account suspended" %}
+        {% endelement %}
+        {% element p %}
+            {% translate "This account has been suspended, so you can’t sign in. If you think this is a mistake, please contact the site’s staff." %}
+        {% endelement %}
+        <p>
+            <a class="link" href="/">{% translate "Go to the home page" %}</a>
+        </p>
+    </div>
 {% endblock content %}
