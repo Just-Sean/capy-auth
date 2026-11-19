@@ -1,0 +1,12 @@
+# Written by Copier. Lets `copier update` know which template and answers this
+# module came from. Don't edit by hand.
+_commit: v1.0.1
+_src_path: gh:Just-Sean/capy-module
+copyright_year: '2026'
+description: 'User accounts for Django projects: signup, login, MFA, passkeys, social
+    login and an API, built on django-allauth.'
+distribution_name: capy-auth
+github_owner: Just-Sean
+license: MIT
+module_name: Capy Auth
+package_name: capy_auth

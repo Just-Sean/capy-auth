@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% comment %}
+  A copy of capy-project v1.1.0's templates/layout.html (comments shortened): the
+  layout the module's pages extend. They fill only the title, head and content blocks.
+  Django's messages show in the role="status" region, which modules rely on.
+{% endcomment %}
+{% block html_attrs %}{% endblock %}
+{% block head %}{% endblock %}
+{% block header %}
+<header>
+  <div role="status">
+    {% for message in messages %}<p>{{ message }}</p>{% endfor %}
+  </div>
+</header>
+{% endblock %}
