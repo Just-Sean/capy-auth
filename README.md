@@ -607,8 +607,9 @@ What happens:
   don't matter; an international domain matches its punycode form) and an optional
   reason (staff only). Adding it suspends every account whose own email, or one of
   whose confirmed addresses, is that address: the account is deactivated, never
-  deleted, its sessions end on its next page load, and its main email address gets a
-  "your account has been suspended" email. The ban page lists the accounts it
+  deleted, it's signed out everywhere (its sessions are ended, so lifting the ban
+  later signs nobody back in), and its main email address gets a "your account has
+  been suspended" email. The ban page lists the accounts it
   suspended. A suspended account signing in with the right password sees "Account
   suspended". Editing a ban later (its reason) changes no account; its address can't
   be changed (lift the ban and add a new one). You can't ban one of your own

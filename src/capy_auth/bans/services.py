@@ -6,6 +6,7 @@ import logging
 from allauth.account.adapter import get_adapter
 from allauth.account.utils import user_email
 from allauth.core import context
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
 from django.db import transaction
@@ -23,10 +24,10 @@ NOTICES = (BANNED_ADDRESS_NOTICE, SUSPENDED_NOTICE)
 def suspend_accounts(ban):
     """Deactivates (never deletes) the accounts using the newly banned address,
     remembers them on the ban and emails each one once the change is saved. Their
-    sessions end on their next page load: Django doesn't keep inactive accounts logged
-    in. An account another ban already suspended is remembered too, so lifting either
-    ban alone doesn't reactivate it; one staff deactivated by hand is left alone.
-    Returns how many were suspended."""
+    sessions are ended (and Django refuses inactive accounts anyway), so lifting the
+    ban signs nobody back in. An account another ban already suspended is remembered
+    too, so lifting either ban alone doesn't reactivate it; one staff deactivated by
+    hand is left alone. Returns how many were suspended."""
     matches = accounts_using(ban.email)
     accounts = list(matches.filter(is_active=True))
     with transaction.atomic():
@@ -34,10 +35,23 @@ def suspend_accounts(ban):
             account.is_active = False
             account.save(update_fields=["is_active"])
         ban.suspended_accounts.add(*accounts, *matches.filter(pk__in=suspended_by_bans()))
+        end_sessions(accounts)
     addresses = [user_email(account) or ban.email for account in accounts]
     request = context.request
     transaction.on_commit(lambda: send_suspension_notices(addresses, request))
     return len(accounts)
+
+
+def end_sessions(accounts):
+    """Ends every recorded session of these accounts (allauth's user sessions, which
+    capy-auth records for every sign-in). E006 makes sure the app is installed; this
+    only skips the step if it isn't, rather than failing a ban."""
+    if not apps.is_installed("allauth.usersessions"):
+        return
+    from allauth.usersessions.models import UserSession
+
+    for session in UserSession.objects.filter(user__in=accounts):
+        session.end()
 
 
 def send_suspension_notices(addresses, request):

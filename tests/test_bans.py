@@ -9,6 +9,8 @@ import re
 
 import pytest
 from allauth.account.models import EmailAddress
+from allauth.usersessions.models import UserSession
+from django.apps import apps
 from django.contrib.admin.models import CHANGE, DELETION, LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -645,3 +647,25 @@ class ProjectSignupForm(BanCheck):
 def test_a_site_without_the_ban_check_at_signup_is_stopped(settings, setting, errors):
     settings.ACCOUNT_SIGNUP_FORM_CLASS = setting
     assert [error.id for error in check_signup_form(None)] == errors
+
+
+@pytest.mark.django_db
+def test_lifting_a_ban_signs_nobody_back_in(superuser_client, ban_in_admin, mallory):
+    browser = Client()
+    log_in(browser, email=mallory.email)
+    assert browser.get(ACCOUNT_PAGE).status_code == 200
+    ban_in_admin(BANNED)
+    assert not UserSession.objects.filter(user=mallory).exists()  # ended, not just refused
+    lift(superuser_client, BannedEmail.objects.get())
+    assert is_active(mallory)
+    assert browser.get(ACCOUNT_PAGE).status_code == 302  # has to sign in again
+
+
+@pytest.mark.django_db
+def test_without_allauths_sessions_app_a_ban_still_works(monkeypatch, ban_in_admin, mallory):
+    installed = apps.is_installed
+    monkeypatch.setattr(
+        apps, "is_installed", lambda name: name != "allauth.usersessions" and installed(name)
+    )
+    ban_in_admin(BANNED)
+    assert not is_active(mallory)
