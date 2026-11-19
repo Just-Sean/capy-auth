@@ -1,0 +1,10 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with site_name=current_site.name %}Your account on {{ site_name }} has been restored.
+
+For your security, its old password no longer works and every device was signed out. Choose a new password with this link. It works once, for {{ link_lifetime }}; after that, use "Forgot your password?" on the sign-in page:
+
+{{ password_reset_url }}
+
+Afterwards, sign in here with this email address and your new password:
+
+{{ login_url }}{% endblocktranslate %}
+{% endautoescape %}

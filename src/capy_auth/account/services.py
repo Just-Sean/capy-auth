@@ -90,13 +90,20 @@ def send_account_created_email(user):
     EmailAddress.objects.get_or_create(
         user=user, email=email, defaults={"primary": not has_main, "verified": False}
     )
+    send_password_link(user, email, ACCOUNT_CREATED_EMAIL)
+    return True
+
+
+def send_password_link(user, email, template_prefix):
+    """Emails the account a one-time link to choose a password (allauth's password reset
+    link), with how long it works and where to sign in afterwards."""
     adapter = get_adapter()
     token = app_settings.PASSWORD_RESET_TOKEN_GENERATOR().make_token(user)
     # The key in the format allauth's own reset email uses ("<uid>-<token>", in
     # allauth/account/internal/flows/password_reset.py); a test follows the link.
     url = adapter.get_reset_password_from_key_url(f"{user_pk_to_url_str(user)}-{token}")
     adapter.send_mail(
-        ACCOUNT_CREATED_EMAIL,
+        template_prefix,
         email,
         {
             "user": user,
@@ -105,7 +112,6 @@ def send_account_created_email(user):
             "login_url": build_absolute_uri(context.request, reverse("account_login")),
         },
     )
-    return True
 
 
 def link_lifetime():

@@ -116,7 +116,9 @@ class BannedEmailAdmin(BanAdmin):
             ngettext("%(bans)d ban lifted", "%(bans)d bans lifted", len(bans)) % {"bans": len(bans)}
             + "; "
             + ngettext(
-                "%(count)d account reactivated.", "%(count)d accounts reactivated.", len(accounts)
+                "%(count)d account reactivated and emailed a link to choose a new password.",
+                "%(count)d accounts reactivated and emailed a link to choose a new password.",
+                len(accounts),
             )
             % {"count": len(accounts)},
         )

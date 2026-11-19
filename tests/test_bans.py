@@ -17,6 +17,7 @@ from django.contrib.auth.models import Permission
 from django.contrib.messages import get_messages
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import mail
+from django.db import transaction
 from django.test import Client, RequestFactory
 from django.urls import reverse
 
@@ -30,9 +31,10 @@ from capy_auth.bans.models import (
     normalize_email,
 )
 from capy_auth.bans.selectors import accounts_using, is_banned_email
-from capy_auth.bans.services import client_ip, lift_bans
+from capy_auth.bans.services import client_ip, lift_bans, send_restored_notices, suspend_accounts
 from tests.accounts import (
     ACCOUNT_PAGE,
+    NEW_PASSWORD,
     PASSWORD,
     RESET,
     code_from,
@@ -116,6 +118,14 @@ def lift(client, *bans):
     return client.post(
         BANS, {"action": "lift_and_reactivate", "_selected_action": [ban.pk for ban in bans]}
     )
+
+
+def choose_new_password(client, message):
+    """Follows the email's one-time link and chooses NEW_PASSWORD."""
+    link = message.body.split("http://testserver", 1)[1].split()[0]
+    page = client.get(link, follow=True)
+    form_url = page.redirect_chain[-1][0]
+    return client.post(form_url, {"password1": NEW_PASSWORD, "password2": NEW_PASSWORD})
 
 
 def is_active(user):
@@ -474,15 +484,22 @@ def test_editing_a_ban_changes_no_account_and_keeps_its_address(
 
 
 @pytest.mark.django_db
-def test_a_suspended_account_signing_in_sees_a_suspended_page(ban_in_admin, mallory):
+def test_a_banned_account_cant_sign_in_and_one_suspended_by_hand_sees_why(
+    ban_in_admin, mallory, ada
+):
     ban_in_admin(BANNED)
+    refused = log_in(Client(), email=mallory.email)
+    assert refused.status_code == 200  # as for a wrong password: suspension removed it
+    assert "suspended" not in refused.content.decode()  # the suspension email says why
+    ada.is_active = False  # staff unticked "Active" by hand; the password still works
+    ada.save()
     client = Client()
-    response = log_in(client, email=mallory.email)
+    response = log_in(client)
     assert response.status_code == 302
     page = check_page(client.get(response.url))
     assert "This account has been suspended" in page
     assert 'href="/"' in page
-    wrong = log_in(Client(), email=mallory.email, password=PASSWORD + "-wrong")
+    wrong = log_in(Client(), password=PASSWORD + "-wrong")
     assert "suspended" not in wrong.content.decode()  # only the right password shows it
 
 
@@ -491,7 +508,7 @@ def test_a_suspended_account_signing_in_sees_a_suspended_page(ban_in_admin, mall
 
 @pytest.mark.django_db
 def test_lifting_reactivates_only_accounts_no_other_ban_holds_and_is_recorded(
-    superuser_client, ban_in_admin, mallory, ada
+    superuser_client, ban_in_admin, mallory, ada, django_capture_on_commit_callbacks
 ):
     ban_in_admin(BANNED)
     ban_in_admin("mallory.main@example.com")  # also holds mallory, already suspended
@@ -500,13 +517,21 @@ def test_lifting_reactivates_only_accounts_no_other_ban_holds_and_is_recorded(
     assert not is_active(mallory)
 
     ban_in_admin(ada.email)
-    response = lift(superuser_client, *BannedEmail.objects.all())
+    mail.outbox.clear()
+    with django_capture_on_commit_callbacks(execute=True):
+        response = lift(superuser_client, *BannedEmail.objects.all())
     assert response.status_code == 302
     assert not BannedEmail.objects.exists()
     assert is_active(mallory) and is_active(ada)
-    assert log_in(Client(), email=mallory.email).url == ACCOUNT_PAGE
+    assert subjects() == ["Your account has been restored"] * 2
+    assert log_in(Client(), email=mallory.email).status_code == 200  # the old password is gone
+    restored = next(m for m in mail.outbox if m.to == [mallory.email])
+    choose_new_password(Client(), restored)
+    assert log_in(Client(), email=mallory.email, password=NEW_PASSWORD).url == ACCOUNT_PAGE
     page = superuser_client.get(response.url).content.decode()
-    assert "2 bans lifted; 2 accounts reactivated." in page
+    assert (
+        "2 bans lifted; 2 accounts reactivated and emailed a link to choose a new password." in page
+    )
     assert LogEntry.objects.filter(action_flag=DELETION, object_repr=ada.email).exists()
     reactivated = LogEntry.objects.filter(action_flag=CHANGE).values_list("object_id", flat=True)
     assert set(reactivated) == {str(mallory.pk), str(ada.pk)}
@@ -669,3 +694,118 @@ def test_without_allauths_sessions_app_a_ban_still_works(monkeypatch, ban_in_adm
     )
     ban_in_admin(BANNED)
     assert not is_active(mallory)
+
+
+# --- Signed out everywhere ---------------------------------------------------------------
+
+
+def browser_of(user, **extra):
+    client = Client(**extra)
+    log_in(client, email=user.email)
+    assert client.get(ACCOUNT_PAGE).status_code == 200
+    return client
+
+
+def ban_and_lift(ban_in_admin, superuser_client):
+    ban_in_admin(BANNED)
+    lift(superuser_client, BannedEmail.objects.get())
+
+
+@pytest.mark.django_db
+def test_a_sign_in_nobody_recorded_isnt_signed_back_in(superuser_client, ban_in_admin, mallory):
+    browser = Client(REMOTE_ADDR="")  # its address can't be read, so it isn't recorded
+    browser.force_login(mallory)
+    assert not UserSession.objects.filter(user=mallory).exists()
+    ban_and_lift(ban_in_admin, superuser_client)
+    assert is_active(mallory)
+    assert browser.get(ACCOUNT_PAGE).status_code == 302
+
+
+@pytest.mark.django_db
+def test_a_session_from_before_recording_isnt_signed_back_in(
+    superuser_client, ban_in_admin, mallory
+):
+    browser = browser_of(mallory)
+    UserSession.objects.filter(user=mallory).delete()  # as on a site that just added it
+    ban_and_lift(ban_in_admin, superuser_client)
+    assert browser.get(ACCOUNT_PAGE).status_code == 302
+
+
+@pytest.mark.django_db
+def test_every_browser_and_the_admin_login_are_signed_out(superuser_client, ban_in_admin, mallory):
+    mallory.is_staff = True
+    mallory.save()
+    browsers = [browser_of(mallory, HTTP_USER_AGENT=f"B{n}") for n in range(3)]
+    admin = Client()
+    admin.post(reverse("admin:login"), {"username": "mallory", "password": PASSWORD})
+    assert admin.get("/admin/").status_code == 200
+    ban_and_lift(ban_in_admin, superuser_client)
+    assert [b.get(ACCOUNT_PAGE).status_code for b in browsers] == [302, 302, 302]
+    assert admin.get("/admin/").status_code == 302
+
+
+@pytest.mark.django_db
+def test_the_banning_staff_and_other_accounts_stay_signed_in(
+    superuser_client, ban_in_admin, mallory, ada
+):
+    bystander = browser_of(ada)
+    ban_and_lift(ban_in_admin, superuser_client)
+    assert superuser_client.get("/admin/").status_code == 200
+    assert bystander.get(ACCOUNT_PAGE).status_code == 200
+    assert UserSession.objects.filter(user=ada).exists()
+
+
+@pytest.mark.django_db
+def test_a_second_ban_and_lifting_both_signs_nobody_back_in(
+    superuser_client, ban_in_admin, mallory
+):
+    browser = browser_of(mallory)
+    ban_in_admin(BANNED)
+    ban_in_admin(mallory.email)  # the account's other address; already suspended
+    lift(superuser_client, *BannedEmail.objects.all())
+    assert is_active(mallory)
+    assert browser.get(ACCOUNT_PAGE).status_code == 302
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "engine",
+    ["django.contrib.sessions.backends.cache", "django.contrib.sessions.backends.cached_db"],
+)
+def test_sessions_in_any_store_are_signed_out(settings, engine, mallory):
+    settings.SESSION_ENGINE = engine
+    browser = browser_of(mallory)
+    suspend_accounts(BannedEmail.objects.create(email=BANNED))
+    lift_bans(BannedEmail.objects.all())
+    assert is_active(mallory)
+    assert browser.get(ACCOUNT_PAGE).status_code == 302
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "engine", ["django.contrib.sessions.backends.db", "django.contrib.sessions.backends.cache"]
+)
+def test_a_rolled_back_ban_changes_nothing(settings, engine, mallory):
+    settings.SESSION_ENGINE = engine
+    browser = browser_of(mallory)
+    with pytest.raises(RuntimeError), transaction.atomic():
+        suspend_accounts(BannedEmail.objects.create(email=BANNED))
+        raise RuntimeError("something after the suspension fails")
+    assert is_active(mallory)
+    assert browser.get(ACCOUNT_PAGE).status_code == 200
+
+
+@pytest.mark.django_db
+def test_a_ban_matching_nobody_signs_nobody_out(ban_in_admin, ada):
+    browser = browser_of(ada)
+    ban_in_admin("nobody@example.com")
+    assert browser.get(ACCOUNT_PAGE).status_code == 200
+
+
+@pytest.mark.django_db
+def test_a_restored_account_without_an_email_isnt_emailed():
+    if get_user_model()._meta.label != "auth.User":
+        pytest.skip("capy-project's user model needs an email")
+    nameless = get_user_model().objects.create_user(username="nameless", email="")
+    send_restored_notices([nameless], RequestFactory().get("/"))
+    assert mail.outbox == []
