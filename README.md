@@ -50,8 +50,15 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   when a project weakens one of these settings. `urls.py` mounts allauth's pages with
   capy-auth's "Your account" page, where people land after logging in, and
   `templates/429.html` puts allauth's "too many attempts" page inside the layout.
-  Emails are sent during the request for now, not as a background job (allauth sends
-  them directly); a later capy-auth feature moves them to the worker.
+- **Emails** are sent by the project's background worker (`emails/`). capy-auth's
+  adapter builds each email as allauth does, keeps the finished email in the cache
+  under a random key for up to an hour, and enqueues a job (Django's Tasks API) that
+  carries only that key. The job takes the email out of the cache and sends it. Why:
+  sending can take seconds, and a job that carried the email would keep verification
+  codes and reset links in the database's job table for as long as finished jobs are
+  kept (14 days in capy-project). If the cache is down, the email is sent during the
+  request instead (logged as a warning); if the worker is more than an hour late, the
+  email is dropped (logged as an error) and the person asks for a new one.
 - **Pages** come from allauth. capy-auth overrides only allauth's page frame and its
   small building blocks, under allauth's own template names:
   `templates/allauth/layouts/base.html` puts every allauth page inside the project's
@@ -220,6 +227,11 @@ In a project made from capy-project, with its database running
    - **Production** needs `EMAIL_URL` (`smtp+tls://` or `smtp+ssl://`) and
      `DJANGO_DEFAULT_FROM_EMAIL` in `.env.production` (the project README's "Email"
      section). Without them, signup and password resets fail with "Email isn't set up".
+   - **The worker and the cache:** capy-auth's emails are sent by the project's
+     background worker (its `worker` service in production; development and tests run
+     jobs straight away) and wait for it in the cache (Redis). capy-project already has
+     both. Its Redis must stay private (password-protected, not published on a port),
+     since queued emails hold codes and reset links for up to an hour.
 
 6. The module's pages extend the project's `templates/layout.html` (see
    [Pages](#pages)), which shows Django's messages ("Saved.") in a `role="status"`
@@ -344,6 +356,10 @@ logger = logging.getLogger("capy_auth")
 
 Never log secrets, passwords, tokens or personal data; log IDs instead.
 
+What capy-auth logs: a warning when the cache is down and an email is sent during the
+request instead of by the worker, and an error when a queued email expired before the
+worker sent it. Neither includes the email's content or address.
+
 ## Rules that keep it pluggable
 
 - Never import from a project or from another module (another capy module, such as
@@ -378,8 +394,9 @@ Never log secrets, passwords, tokens or personal data; log IDs instead.
   each job well under 60 seconds (a deploy waits that long for running jobs), and when
   a job's arguments change, keep accepting the old ones until queued jobs have run. A
   project needs its `worker` running for them. **Email** goes through
-  `django.core.mail`. (Exception for now: allauth's emails are sent during the
-  request; a later capy-auth feature moves them to the worker.)
+  `django.core.mail`. A job's arguments never hold a secret (a code, a link with a
+  token, a password): capy-auth's emails wait in the cache and the job carries only a
+  random key (`emails/`).
 - **The cache** is Redis in projects made from capy-project, and Django raises an error when
   Redis is down: code that must keep working then catches cache errors and falls back
   to the database. Clear a cached value when its data is saved; don't rely on a
@@ -874,7 +891,8 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, and allauth's pages |
 | `src/capy_auth/templates/capy_auth/account.html` | The "Your account" page |
 | `src/capy_auth/templates/429.html` | allauth's "too many attempts" page, inside the layout |
-| `src/capy_auth/account/adapter.py` | capy-auth's account adapter (allauth asks it how to behave: whether signup is open, its messages, equal timing for taken emails) and `user_display` |
+| `src/capy_auth/account/adapter.py` | capy-auth's account adapter (allauth asks it how to behave: whether signup is open, its messages, equal timing for taken emails, sending emails through the worker) and `user_display` |
+| `src/capy_auth/emails/` | Emails sent by the background worker: the finished email waits in the cache (`sending.py`), the job sends it (`tasks.py`) |
 | `src/capy_auth/templates/allauth/layouts/base.html` | Puts every allauth page inside the project's `layout.html` |
 | `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
 | `src/capy_auth/templates/account/` | allauth pages copied with their inline style removed (compare with allauth's when upgrading it) |
@@ -890,6 +908,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_settings_store.py` | Checks the settings record, its admin page, Django's checks and closing signup |
 | `tests/test_email_password.py` | Checks signup, verification by code, login, logout, password reset and change, end to end |
 | `tests/test_email_password_edges.py` | Edge cases and security: email case and spaces, code limits, rate limits behind a proxy, timing, redirects, reset tokens |
+| `tests/test_background_email.py` | Checks emails are sent by the job, with only a key in it, once; dropped when expired; sent at once when the cache is down |
 | `tests/test_security_settings_check.py` | Checks the warning for weakened allauth settings |
 | `tests/accounts.py` | Shared by the account tests: signing up, logging in, codes and reset links |
 | `tests/conftest.py` | Clears allauth's rate-limit counts before each test; the `ada` user |

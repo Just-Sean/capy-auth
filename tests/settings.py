@@ -89,6 +89,9 @@ AUTH_PASSWORD_VALIDATORS = [
 MAILERS = {"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
 DEFAULT_FROM_EMAIL = "accounts@example.com"
 
+# Background jobs run straight away, as in capy-project's development and tests.
+TASKS = {"default": {"BACKEND": "django.tasks.backends.immediate.ImmediateBackend"}}
+
 ROOT_URLCONF = "tests.urls"
 
 TEMPLATES = [
