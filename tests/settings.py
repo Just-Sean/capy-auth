@@ -54,6 +54,9 @@ MIDDLEWARE = [
 # capy-auth feature that makes allauth work with them adds them here too.
 AUTHENTICATION_BACKENDS = ["allauth.account.auth_backends.AuthenticationBackend"]
 
+# capy-auth's account adapter, as the README tells a project to set it.
+ACCOUNT_ADAPTER = "capy_auth.account.adapter.AccountAdapter"
+
 ROOT_URLCONF = "tests.urls"
 
 TEMPLATES = [
