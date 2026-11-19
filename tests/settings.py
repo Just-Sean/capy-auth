@@ -65,9 +65,14 @@ ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+ACCOUNT_EMAIL_VERIFICATION_SUPPORTS_RESEND = True
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_EMAIL_NOTIFICATIONS = True
+ACCOUNT_REAUTHENTICATION_REQUIRED = True
+ACCOUNT_USER_DISPLAY = "capy_auth.account.adapter.user_display"
 PASSWORD_RESET_TIMEOUT = 60 * 60  # reset links work for 1 hour
+# Not behind a proxy here; projects behind one set 1 (README).
+ALLAUTH_TRUSTED_PROXY_COUNT = 0
 
 # capy-project's password rules (config/settings/users.py).
 AUTH_PASSWORD_VALIDATORS = [

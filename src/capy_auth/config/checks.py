@@ -1,14 +1,18 @@
 """Django system checks (run by `manage.py check`, `migrate` and `runserver`) for mistakes
-that would make the capy-auth settings page quietly do nothing or crash."""
+in a project's setup: errors for what would make the capy-auth settings page quietly do
+nothing or crash, warnings for allauth settings that weaken capy-auth's security choices
+(the README's install step 4)."""
 
+from allauth import app_settings as allauth_settings
 from allauth.account import app_settings as account_settings
 from django.conf import settings
-from django.core.checks import Error
+from django.core.checks import Error, Warning
 from django.utils.module_loading import import_string
 
 from capy_auth.account.adapter import AccountAdapter
 
 ADAPTER_PATH = "capy_auth.account.adapter.AccountAdapter"
+MAX_RESET_LINK_SECONDS = 60 * 60
 
 
 def check_account_adapter(app_configs, **kwargs):
@@ -40,4 +44,50 @@ def check_starting_values(app_configs, **kwargs):
             '(e.g. env.bool("CAPY_AUTH_SIGNUP_OPEN", default=True)).',
             id="capy_auth.E002",
         )
+    ]
+
+
+def security_settings():
+    """(setting, what capy-auth expects, whether the project has it) for each security
+    choice the README's install step 4 makes."""
+    behind_proxy = bool(getattr(settings, "SECURE_PROXY_SSL_HEADER", None))
+    return [
+        ("ACCOUNT_LOGIN_METHODS", '{"email"}', account_settings.LOGIN_METHODS == {"email"}),
+        (
+            "ACCOUNT_EMAIL_VERIFICATION",
+            '"mandatory"',
+            account_settings.EMAIL_VERIFICATION
+            == account_settings.EmailVerificationMethod.MANDATORY,
+        ),
+        (
+            "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED",
+            "True",
+            account_settings.EMAIL_VERIFICATION_BY_CODE_ENABLED,
+        ),
+        ("ACCOUNT_PREVENT_ENUMERATION", "True", bool(account_settings.PREVENT_ENUMERATION)),
+        ("ACCOUNT_REAUTHENTICATION_REQUIRED", "True", account_settings.REAUTHENTICATION_REQUIRED),
+        (
+            "PASSWORD_RESET_TIMEOUT",
+            f"at most {MAX_RESET_LINK_SECONDS} (1 hour)",
+            settings.PASSWORD_RESET_TIMEOUT <= MAX_RESET_LINK_SECONDS,
+        ),
+        (
+            "ALLAUTH_TRUSTED_PROXY_COUNT",
+            "1 behind a proxy (SECURE_PROXY_SSL_HEADER is set)",
+            not behind_proxy
+            or allauth_settings.TRUSTED_PROXY_COUNT > 0
+            or bool(allauth_settings.TRUSTED_CLIENT_IP_HEADER),
+        ),
+    ]
+
+
+def check_security_settings(app_configs, **kwargs):
+    return [
+        Warning(
+            f"{name} should be {expected} for capy-auth's security choices.",
+            hint='See capy-auth\'s README, "Add it to a project", step 4.',
+            id="capy_auth.W001",
+        )
+        for name, expected, ok in security_settings()
+        if not ok
     ]

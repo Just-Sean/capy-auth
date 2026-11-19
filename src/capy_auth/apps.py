@@ -11,7 +11,12 @@ class CapyAuthConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
 
     def ready(self):
-        from capy_auth.config.checks import check_account_adapter, check_starting_values
+        from capy_auth.config.checks import (
+            check_account_adapter,
+            check_security_settings,
+            check_starting_values,
+        )
 
         checks.register(check_account_adapter)
         checks.register(check_starting_values)
+        checks.register(check_security_settings)

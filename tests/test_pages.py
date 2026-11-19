@@ -270,13 +270,23 @@ def test_field_element_textarea_keeps_its_value():
 def test_button_with_href_is_a_link_and_without_is_a_button():
     html = render(
         '{% element button href="/x/" tags="primary,minor" %}Go{% endelement %}'
-        '{% element button type="submit" name="n" value="v" %}Send{% endelement %}'
+        '{% element button type="submit" name="n" value="v" tags="secondary" %}Send'
+        "{% endelement %}"
     )
     assert re.search(r'<a href="/x/"\s+class="btn btn-primary btn-sm"\s*>\s*Go\s*</a>', html)
     assert re.search(
-        r'<button\s+class="btn"\s+name="n"\s+value="v"\s+type="submit"\s*>\s*Send\s*</button>',
+        r'<button\s+class="btn btn-secondary"\s+name="n"\s+value="v"\s+type="submit"\s*>'
+        r"\s*Send\s*</button>",
         html,
     )
+
+
+def test_a_forms_untagged_submit_button_is_the_primary_action():
+    html = render('{% element button type="submit" %}Save{% endelement %}')
+    assert 'class="btn btn-primary"' in html
+    # A button that submits another form (form=…) isn't this form's main action.
+    other = render('{% element button type="submit" form="other" %}Go{% endelement %}')
+    assert 'class="btn"' in other
 
 
 def test_button_tags_are_matched_whole():
@@ -294,15 +304,15 @@ def test_a_badges_explanation_is_written_out_for_screen_readers():
 
 @pytest.mark.django_db
 def test_a_message_after_a_redirect_shows_in_the_layouts_status_region(client, user_with_email):
-    client.force_login(user_with_email)
     response = client.post(
-        reverse("account_email"),
-        {"action_primary": "", "email": "ada@example.com"},
+        reverse("account_login"),
+        {"login": "ada@example.com", "password": PASSWORD},
         follow=True,
     )
     page = check_page(response)
     status = re.search(r'<div role="status">(.*?)</div>', page, re.DOTALL).group(1)
-    assert "Primary email address set." in status
+    # Named by email, not by the username allauth made up (ACCOUNT_USER_DISPLAY).
+    assert "Successfully signed in as ada@example.com." in status
 
 
 @pytest.mark.django_db

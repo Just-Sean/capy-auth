@@ -14,50 +14,22 @@ from django.core import mail
 from django.test import Client
 from django.urls import reverse
 
+from tests.accounts import (
+    ACCOUNT_PAGE,
+    CHANGE_PASSWORD,
+    LOGIN,
+    LOGOUT,
+    NEW_PASSWORD,
+    PASSWORD,
+    RESET,
+    SIGNUP,
+    code_from,
+    log_in,
+    reset_link,
+    sign_up,
+    users_with_email,
+)
 from tests.helpers import check_page
-
-PASSWORD = secrets.token_urlsafe()  # made each run, so no password is written here
-NEW_PASSWORD = secrets.token_urlsafe()
-SIGNUP = reverse("account_signup")
-LOGIN = reverse("account_login")
-LOGOUT = reverse("account_logout")
-ACCOUNT_PAGE = reverse("capy_auth_account")
-RESET = reverse("account_reset_password")
-CHANGE_PASSWORD = reverse("account_change_password")
-
-
-@pytest.fixture
-def ada():
-    """A user with a verified email, who can log in."""
-    user = get_user_model().objects.create_user(
-        username="ada", email="ada@example.com", password=PASSWORD
-    )
-    EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=True)
-    return user
-
-
-def users_with_email(email):
-    return get_user_model().objects.filter(email__iexact=email)
-
-
-def code_from(message):
-    """The verification code in an email (allauth's: letters and digits, with a dash)."""
-    return re.search(r"^\s*([A-Z0-9]{4}-[A-Z0-9]{4})\s*$", message.body, re.MULTILINE).group(1)
-
-
-def sign_up(client, email="eve@example.com", password=PASSWORD):
-    return client.post(SIGNUP, {"email": email, "password1": password, "password2": password})
-
-
-def log_in(client, email="ada@example.com", password=PASSWORD):
-    return client.post(LOGIN, {"login": email, "password": password})
-
-
-def reset_link(message):
-    return re.search(r"https?://testserver(/accounts/password/reset/key/\S+/)", message.body).group(
-        1
-    )
-
 
 # --- Signup and verification ---------------------------------------------------------
 
@@ -124,6 +96,7 @@ def test_signing_up_with_a_taken_email_looks_the_same_and_creates_no_one(client,
     new = sign_up(client, email="eve@example.com")
     taken = sign_up(Client(), email="ADA@Example.com")
     assert taken.status_code == new.status_code == 302
+    assert taken.url == new.url
     assert users_with_email("ada@example.com").count() == 1
     # The owner is told someone tried; nobody else learns the account exists.
     assert any("ada@example.com" in message.to for message in mail.outbox)
@@ -187,7 +160,9 @@ def test_the_account_page_needs_a_login_and_links_to_the_account_pages(client, a
     assert response.url.startswith(LOGIN)
     client.force_login(ada)
     page = check_page(client.get(ACCOUNT_PAGE))
-    assert f'href="{reverse("account_email")}"' in page
+    assert "You're signed in as ada@example.com." in page
+    # Managing email addresses comes in a later feature; until then it isn't linked.
+    assert f'href="{reverse("account_email")}"' not in page
     assert f'href="{CHANGE_PASSWORD}"' in page
     assert f'action="{LOGOUT}"' in page
 

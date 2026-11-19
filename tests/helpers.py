@@ -45,9 +45,9 @@ def dangling_describedby(page):
     ]
 
 
-def check_page(response):
+def check_page(response, status=200):
     """The page is a full page in layout.html that the strict policy allows."""
-    assert response.status_code == 200
+    assert response.status_code == status
     assert "Content-Security-Policy" in response.headers
     page = response.content.decode()
     assert '<div role="status">' in page  # layout.html's messages region

@@ -5,12 +5,13 @@
     <div class="flex flex-col gap-4">
         <h1 class="text-2xl font-bold">{% translate "Your account" %}</h1>
         <p>
-            {% blocktranslate with email=user.email %}You're signed in as {{ email }}.{% endblocktranslate %}
+            {% if user.email %}
+                {% blocktranslate with email=user.email %}You're signed in as {{ email }}.{% endblocktranslate %}
+            {% else %}
+                {% translate "You're signed in." %}
+            {% endif %}
         </p>
         <ul class="flex flex-wrap gap-2">
-            <li>
-                <a class="btn" href="{% url 'account_email' %}">{% translate "Email addresses" %}</a>
-            </li>
             <li>
                 <a class="btn" href="{% url 'account_change_password' %}">{% translate "Change password" %}</a>
             </li>
