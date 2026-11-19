@@ -4,6 +4,7 @@ templates are checked in test_csp.py.)"""
 
 import string
 
+import pytest
 from django.core.management import call_command
 
 # A production project's security settings, as capy-project sets them, so any warning
@@ -25,6 +26,8 @@ PRODUCTION_SECURITY = {
 CLICKJACKING_MIDDLEWARE = "django.middleware.clickjacking.XFrameOptionsMiddleware"
 
 
+@pytest.mark.django_db  # allauth's sessions model has a JSON field, which Django's
+# checks ask the database about
 def test_the_module_adds_no_deployment_warning(settings):
     for name, value in PRODUCTION_SECURITY.items():
         setattr(settings, name, value)

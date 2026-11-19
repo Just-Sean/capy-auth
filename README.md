@@ -65,6 +65,17 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   when a project weakens one of these settings. `urls.py` mounts allauth's pages with
   capy-auth's "Your account" page, where people land after logging in, and
   `templates/429.html` puts allauth's "too many attempts" page inside the layout.
+- **Sessions** (`sessions/`, `templates/usersessions/`): allauth asks for the password
+  again before sensitive changes (adding or removing an address, setting a password,
+  later MFA) unless it was typed in the last 5 minutes
+  (`ACCOUNT_REAUTHENTICATION_REQUIRED`, with allauth's 5-minute
+  `ACCOUNT_REAUTHENTICATION_TIMEOUT`); signing in alone
+  doesn't count, and changing the password always asks for the current one. allauth's
+  user sessions app records each sign-in; capy-auth's "Signed-in devices" page
+  (rewritten from allauth's, as cards that wrap on phones) lists them and signs out
+  everywhere else. It shows when each started, not when it was last used: allauth's
+  `USERSESSIONS_TRACK_ACTIVITY` would write to the database on every request, so it's
+  left off. `checks.py` is the startup check E006.
 - **Emails** are sent by the project's background worker (`emails/`). capy-auth's
   adapter builds each email as allauth does, keeps the finished email in the cache
   under a random key for up to an hour, and enqueues a job (Django's Tasks API) that
@@ -128,14 +139,14 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   `account/email_change.html` and `account/phone_change.html`, are copied with their
   inline style (which the Content Security Policy blocks) replaced by the `hidden`
   attribute; a test fails if allauth's originals change, and another if allauth gives
-  an element something the override doesn't show. Three more are rewritten rather
+  an element something the override doesn't show. Four more are rewritten rather
   than copied: `account/email.html` (addresses wrap on narrow screens, the choices are
   grouped under a legend, the buttons say they act on the chosen address, capy-auth's
-  wording) and `account/password_reset_from_key.html` and `_done.html` ("Choose a
-  password", then a "Sign in" button); a test fails when allauth's original of any of
-  them changes. `account/account_inactive.html`
-  replaces allauth's inactive-account page with an "Account suspended" page inside the
-  layout (written for capy-auth, not copied).
+  wording), `account/password_reset_from_key.html` and `_done.html` ("Choose a
+  password", then a "Sign in" button), and `usersessions/usersession_list.html` (see
+  Sessions); a test fails when allauth's original of any of them changes.
+  `account/account_inactive.html` replaces allauth's inactive-account page with an
+  "Account suspended" page inside the layout (written for capy-auth, not copied).
 - **The stand-in project** (`tests/settings.py`, `tests/urls.py`) is the smallest
   Django project that runs the app, so the tests prove it works outside any one
   project. It has allauth, capy-project's strict Content Security Policy (enforced),
@@ -189,16 +200,22 @@ In a project made from capy-project, with its database running
        "django.contrib.messages",
        "allauth",
        "allauth.account",
+       "allauth.usersessions",  # the "Signed-in devices" page
        ...,
    ]
    MIDDLEWARE = [
        ...,
        "django.contrib.messages.middleware.MessageMiddleware",
        "allauth.account.middleware.AccountMiddleware",
+       "allauth.usersessions.middleware.UserSessionsMiddleware",
        "capy_auth.limits.middleware.CacheDownMiddleware",
        ...,
    ]
    ```
+
+   allauth's user sessions app records each sign-in (in its own table, created by
+   `migrate` in step 8) for the "Signed-in devices" page; without the app or its
+   middleware, Django's checks stop the site (`capy_auth.E006`).
 
 3. In `config/urls.py` (change its import to `from django.urls import include, path`),
    add to `urlpatterns`:
@@ -502,7 +519,8 @@ In a project made from capy-project, with its database running
    http://localhost:8000/accounts/signup/, sign up, copy the code from the email printed
    in the `runserver` output, and you land on "Your account". Sign out, then sign in
    again with the same email and password. Open "Email addresses" from "Your account"
-   to add a second address. To check the staff email, add a user in the admin, open
+   to add a second address. Sign in from a second browser, open "Signed-in devices",
+   choose "Sign out everywhere else", and the second browser is signed out. To check the staff email, add a user in the admin, open
    the "An account was created for you" email in the `runserver` output, choose a
    password with its link, and sign in without another code.
 
@@ -1189,6 +1207,9 @@ If the repository itself moved, also point git at it:
 | `tests/test_limits.py` | Checks axes locks out one account (under its main email, however typed), not everyone at an address, and a forged forwarded address doesn't escape; the lockout page; the cache-down page; the email check |
 | `tests/test_email_addresses.py` | Checks the email page (add with a code, make primary, remove), the existing-users migration, `mark_email_verified` and the email for accounts staff create |
 | `tests/test_email_addresses_edges.py` | Edge cases: blank and shared addresses, the migration on real migration history, the email page's limits, the real admin "add user" page, when a reset does and doesn't confirm |
+| `src/capy_auth/sessions/` | The startup check E006 for allauth's user sessions (`checks.py`) |
+| `src/capy_auth/templates/usersessions/usersession_list.html` | The "Signed-in devices" page (rewritten from allauth's) |
+| `tests/test_sessions.py` | Checks asking for the password again (the 5-minute window), the "Signed-in devices" page, signing out everywhere else, and E006 |
 | `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends and emails, lifting reactivates; the admin permissions; the check E005 |
 | `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |
 | `tests/test_breached_password_pages.py` | Checks it on every page and command that sets a password (signup, change, reset, the admin, `createsuperuser`), and that the settings record is read once per request |

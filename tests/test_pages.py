@@ -42,6 +42,7 @@ LOGGED_IN_PAGES = [
     "account_change_password",
     "account_reauthenticate",
     "account_logout",
+    "usersessions_list",
 ]
 # allauth pages capy-auth copies to change one thing: the inline style the policy blocks.
 COPIED_PAGES = ["account/email_change.html", "account/phone_change.html"]
@@ -362,6 +363,9 @@ REWRITTEN_PAGES = {
     ),
     "account/password_reset_from_key_done.html": (
         "84a7e4eeba8bf3ecfc5fae59f8658e7ba6edd9f521383e4d87afe42b55697707"
+    ),
+    "usersessions/usersession_list.html": (
+        "232143c3f98d9d9fd03c97fb0516f9af0a61cf069edf123e2ed90ae5fa814808"
     ),
 }
 

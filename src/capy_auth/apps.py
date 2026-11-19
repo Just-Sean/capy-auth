@@ -22,6 +22,7 @@ class CapyAuthConfig(AppConfig):
             check_starting_values,
         )
         from capy_auth.limits.checks import check_email_can_be_sent
+        from capy_auth.sessions.checks import check_user_sessions
 
         checks.register(check_account_adapter)
         checks.register(check_starting_values)
@@ -30,5 +31,6 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_breached_password_validator)
         checks.register(check_email_can_be_sent)
         checks.register(check_signup_form)
+        checks.register(check_user_sessions)
         ban_receivers.connect_receivers()
         account_receivers.connect_receivers()
