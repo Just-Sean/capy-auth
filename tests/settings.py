@@ -88,6 +88,7 @@ ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_EMAIL_NOTIFICATIONS = True
 ACCOUNT_REAUTHENTICATION_REQUIRED = True
 ACCOUNT_USER_DISPLAY = "capy_auth.account.adapter.user_display"
+ACCOUNT_SIGNUP_FORM_CLASS = "capy_auth.bans.forms.BanCheck"
 PASSWORD_RESET_TIMEOUT = 60 * 60  # reset links work for 1 hour
 # Not behind a proxy here; projects behind one set 1 (README).
 ALLAUTH_TRUSTED_PROXY_COUNT = 0

@@ -7,6 +7,7 @@ To link to users, use settings.AUTH_USER_MODEL (never import a project's User):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 """
 
+from capy_auth.bans.models import BannedEmail, BannedEmailAttempt, BannedSocialAccount
 from capy_auth.config.models import AuthSettings
 
-__all__ = ["AuthSettings"]
+__all__ = ["AuthSettings", "BannedEmail", "BannedEmailAttempt", "BannedSocialAccount"]
