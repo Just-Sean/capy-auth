@@ -23,14 +23,20 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   fit a capy project, and the checks a project needs. Why: authentication is too risky
   to write by hand, and allauth is the most complete, best maintained option for
   Django. capy-auth defines no user model; it uses the project's
-  (`settings.AUTH_USER_MODEL`).
+  (`settings.AUTH_USER_MODEL`). allauth brings its own dependencies into the project
+  (cryptography, fido2, PyJWT, oauthlib, requests, qrcode); the project's pip-audit and
+  Dependabot check them along with its other packages.
+- **Made for capy projects:** a project made from capy-project, styled with
+  capy-theme. Its pages extend the project's `layout.html` and use daisyUI 5 classes,
+  so capy-theme's active theme styles them; it never imports capy-theme.
 - **The stand-in project** (`tests/settings.py`, `tests/urls.py`) is the smallest
   Django project that runs the app, so the tests prove it works outside any one
-  project. It gives the app what a capy project gives it: allauth, capy-project's
-  strict Content Security Policy (enforced), copies of capy-project's `base.html` and
-  `layout.html` (`tests/templates/`), and either Django's own user model or a copy of
-  capy-project's (`tests/email_users/`, with `TEST_USER_MODEL=email`). `tests/` also
-  checks the rules below.
+  project. It has allauth, capy-project's strict Content Security Policy (enforced),
+  copies of capy-project's `base.html` and `layout.html` (`tests/templates/`), and
+  either Django's own user model or a copy of capy-project's (`tests/email_users/`,
+  with `TEST_USER_MODEL=email`). It doesn't have capy-project's login limits
+  (django-axes and the per-address limit) yet: the feature that makes capy-auth work
+  with them adds them here. `tests/` also checks the rules below.
 - **Released as git tags** (`vX.Y.Z`) that projects install from GitHub, never on the
   public PyPI (`pyproject.toml` refuses an upload). Built with uv's own build backend,
   kept up to date with capy-module by Copier (see
@@ -142,7 +148,8 @@ Never log secrets, passwords, tokens or personal data; log IDs instead.
 
 ## Rules that keep it pluggable
 
-- Never import from a project or from another module.
+- Never import from a project or from another module (another capy module, such as
+  capy-theme). Its own dependencies, such as django-allauth, are fine.
 - Link to users with `settings.AUTH_USER_MODEL`, never a project's `User` class.
 - Keep templates in `src/capy_auth/templates/capy_auth/` and static
   files in `src/capy_auth/static/capy_auth/`, so names never clash.
@@ -249,30 +256,10 @@ Never log secrets, passwords, tokens or personal data; log IDs instead.
   `jinja2/capy_auth/emails/`): they need inline styles and full image URLs,
   and the site's policy doesn't apply to them, so the check skips that folder. Nothing
   else goes there.
-- **Testing pages:** the stand-in project has no `layout.html`. When the module gets
-  pages, add `"DIRS": [Path(__file__).parent / "templates"]` (with
-  `from pathlib import Path`) to `TEMPLATES` in `tests/settings.py`, and a
-  `tests/templates/layout.html` shaped like a project's:
-
-  ```html
-  <!doctype html>
-  <html lang="en"{% block html_attrs %}{% endblock %}>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    {% block head %}{% endblock %}
-    <title>{% block title %}Untitled page{% endblock %}</title>
-  </head>
-  <body>
-    <header>
-      <div role="status">
-        {% for message in messages %}<p>{{ message }}</p>{% endfor %}
-      </div>
-    </header>
-    <main id="main">{% block content %}{% endblock %}</main>
-  </body>
-  </html>
-  ```
+- **Testing pages:** the stand-in project already has copies of capy-project v1.1.0's
+  `base.html` and `layout.html` in `tests/templates/`, under its enforced Content
+  Security Policy, so a test that requests one of the module's pages gets the same page
+  frame and policy as in a real project. Keep those copies in step with capy-project's.
 
 ## Security
 
@@ -500,33 +487,29 @@ Create migrations after changing models (`tests/test_app.py` fails until you do)
 uv run django-admin makemigrations capy_auth --settings=tests.settings --pythonpath=.
 ```
 
+After updating the copy of capy-project's user model (`tests/email_users/models.py`),
+make its migration the same way, with that user model switched on:
+
+```bash
+TEST_USER_MODEL=email uv run django-admin makemigrations email_users --settings=tests.settings --pythonpath=.
+```
+
 ## Develop it
 
 You need git, Docker (for Postgres tests and full secret scans) and uv 0.12: the
 module requires that version line, the same one CI uses, so `uv.lock` is always
 written the way CI reads it. If uv came from its standalone installer,
 `uv self update 0.12.24` switches to it (down from a newer uv too); otherwise install
-0.12.24 the way you installed uv. Once, right after making the module:
+0.12.24 the way you installed uv. Once, after cloning the repository:
 
 ```bash
-git init -b main           # a new module isn't a git repo yet (CI and releases use main)
-uv lock                    # pins every package version in uv.lock: commit it (CI needs it)
-uv sync                    # installs Python, Django and the test tools
+git clone https://github.com/Just-Sean/capy-auth.git && cd capy-auth
+uv sync                    # installs Python, Django, allauth and the test tools
 uv run pre-commit install  # turns on the checks that run on every commit
-git add -A && git commit -m "Start from capy-module"
 ```
 
-Then create the repository on GitHub under `Just-Sean`, named
-`capy-auth`, public (MIT), and push. With
-GitHub's `gh` tool:
-
-```bash
-gh repo create Just-Sean/capy-auth --public --source . --push
-```
-
-(or create it on github.com, then `git remote add origin
-https://github.com/Just-Sean/capy-auth.git` and
-`git push -u origin main`). In the repository's Settings:
+The repository already exists on GitHub (public, MIT); the starter's steps for
+creating it are done. In the repository's Settings:
 
 - **Code security** (called "Advanced Security" on some accounts): turn on
   "Dependabot alerts" and "Dependabot security updates"; for a public repository, also
@@ -561,8 +544,9 @@ Before every pull request, check the dependencies for known vulnerabilities:
 
 **On GitHub,** every pull request runs `.github/workflows/ci.yml`: ruff; the tests
 with coverage on SQLite and on PostgreSQL 18 (logged in as a role that isn't a
-superuser, like a project's) with the versions in `uv.lock`, and once more on SQLite
-with the lowest versions `pyproject.toml` allows; pip-audit; a scan of the whole
+superuser, like a project's) with the versions in `uv.lock`, once more on SQLite
+with the lowest versions `pyproject.toml` allows, and on both databases again with a
+copy of capy-project's user model (`TEST_USER_MODEL=email`); pip-audit; a scan of the whole
 history for secrets (gitleaks); and a check that the built package holds only the
 module. A newer push to a pull request cancels the older run. Dependabot
 (`.github/dependabot.yml`) opens pull requests for updates every week, once a release
@@ -593,6 +577,7 @@ docker run -d --rm --name capy-auth-postgres -p 127.0.0.1:5433:5432 -e POSTGRES_
 docker exec capy-auth-postgres pg_isready -U app -h 127.0.0.1   # repeat until "accepting connections"
 docker exec capy-auth-postgres psql -U app -d module_tests -c "CREATE ROLE module LOGIN PASSWORD 'module' NOSUPERUSER CREATEDB"
 DATABASE_URL=postgres://module:module@localhost:5433/module_tests uv run pytest
+TEST_USER_MODEL=email DATABASE_URL=postgres://module:module@localhost:5433/module_tests uv run pytest
 docker stop capy-auth-postgres   # stops it and deletes it, data included
 ```
 
@@ -626,8 +611,8 @@ the version. If not, there's nothing for a pull request: check that CI passed on
 
    Afterwards, put the project back on its previous tag (the `uv add … --tag` line),
    or `uv remove capy-auth` before the module's first release.
-3. Open a pull request; CI must pass (both databases, the lowest versions, the package
-   check). Merge it.
+3. Open a pull request; CI must pass (both databases, both user models, the lowest
+   versions, the package check). Merge it.
 4. Tag the merged `main` and push only the tag:
 
    ```bash
@@ -650,7 +635,8 @@ what to do):
    into it between `<<<<<<<` and `>>>>>>>` lines: search for `<<<<<<<` (`git status`
    lists the changed files) and keep the right lines, your own changes and the newer
    of two pinned versions.
-4. Run `uv lock`, `uv run pytest --cov` and `uv run ruff check .`.
+4. Run `uv lock`, `uv run pytest --cov`, `TEST_USER_MODEL=email uv run pytest` and
+   `uv run ruff check .`.
 5. Commit, open a pull request, and merge it once CI passes. If CI's check names
    changed, update the required checks under Settings > Branches.
 

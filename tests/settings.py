@@ -22,8 +22,6 @@ import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.csp import CSP
 
-TESTS_DIR = Path(__file__).resolve().parent
-
 SECRET_KEY = secrets.token_urlsafe(50)  # a new one every run: nothing to keep secret
 DEBUG = False
 ALLOWED_HOSTS = ["testserver"]
@@ -51,6 +49,9 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
+# Differs from capy-project on purpose, for now: capy-project also runs its per-address
+# login limit and django-axes before the login backend (config/settings/users.py). The
+# capy-auth feature that makes allauth work with them adds them here too.
 AUTHENTICATION_BACKENDS = ["allauth.account.auth_backends.AuthenticationBackend"]
 
 ROOT_URLCONF = "tests.urls"
@@ -60,7 +61,7 @@ TEMPLATES = [
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         # tests/templates holds a copy of capy-project's base.html and layout.html,
         # which the module's pages extend.
-        "DIRS": [TESTS_DIR / "templates"],
+        "DIRS": [Path(__file__).resolve().parent / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
