@@ -2,6 +2,7 @@
 Content Security Policy, with daisyUI classes so capy-theme styles them, and accessible
 labels, help text and errors."""
 
+import hashlib
 import re
 import secrets
 from pathlib import Path
@@ -324,7 +325,7 @@ def test_the_email_page_puts_its_scripts_and_json_data_in_the_head(client, user_
     assert '<script src="/static/account/js/onload.js">' in head
     assert 'data-allauth-onload="allauth.account.forms.manageEmailForm"' in head
     assert "<script" not in body
-    assert re.search(r'<input class="radio"[^>]*checked[^>]*value="ada@example.com"', page)
+    assert re.search(r'<input class="radio"[^>]*value="ada@example.com"[^>]*checked', page)
 
 
 @pytest.mark.django_db
@@ -350,6 +351,27 @@ def test_copied_pages_match_allauths_apart_from_the_inline_style(name):
     copy = (CAPY_AUTH_TEMPLATES / name).read_text(encoding="utf-8")
     copy = re.sub(r"\{% comment %\}.*?\{% endcomment %\}\n", "", copy, count=1, flags=re.DOTALL)
     assert copy == original.replace('style="display: none"', "hidden")
+
+
+# allauth pages capy-auth rewrites rather than copies, with a fingerprint of the allauth
+# original each was written from (allauth 65.22.1).
+REWRITTEN_PAGES = {
+    "account/email.html": "b828763e520b3a1241e815b6608bb8a2438758a699cdc66ee9619713597f9157",
+    "account/password_reset_from_key.html": (
+        "a440b3cb49b8f55641d26cf3146a028f21a9e67ed00d1b61676d3a14ce5ba039"
+    ),
+    "account/password_reset_from_key_done.html": (
+        "84a7e4eeba8bf3ecfc5fae59f8658e7ba6edd9f521383e4d87afe42b55697707"
+    ),
+}
+
+
+@pytest.mark.parametrize(("name", "fingerprint"), REWRITTEN_PAGES.items())
+def test_rewritten_pages_were_written_from_allauths_current_version(name, fingerprint):
+    # Fails when an allauth upgrade changes the original: check the rewrite against the
+    # new version (fields, actions, scripts), then update the fingerprint.
+    original = (ALLAUTH_TEMPLATES / name).read_bytes()
+    assert hashlib.sha256(original).hexdigest() == fingerprint
 
 
 def element_names(source):

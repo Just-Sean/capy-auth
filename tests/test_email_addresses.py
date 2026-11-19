@@ -11,15 +11,18 @@ from allauth.account.models import EmailAddress
 from allauth.core import context
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.core import mail
 from django.core.management import CommandError, call_command
-from django.db import connection
+from django.db import IntegrityError, connection
 from django.test import Client, RequestFactory
 from django.urls import resolve, reverse
 
-from capy_auth.account.services import send_account_created_email
+from capy_auth.account import services
+from capy_auth.account.receivers import is_the_user_admins_add_page
+from capy_auth.account.services import link_lifetime, send_account_created_email
 from capy_auth.bans.models import BannedEmail
-from tests.accounts import ACCOUNT_PAGE, NEW_PASSWORD, PASSWORD, code_from, log_in
+from tests.accounts import ACCOUNT_PAGE, PASSWORD, code_from, log_in
 from tests.helpers import check_page
 
 EMAIL_PAGE = reverse("account_email")
@@ -62,6 +65,27 @@ def test_the_email_page_lists_the_accounts_addresses_in_the_layout(ada):
     log_in(client)
     page = check_page(client.get(EMAIL_PAGE))
     assert "ada@example.com" in page
+
+
+@pytest.mark.django_db
+def test_the_email_page_wraps_groups_and_explains_its_buttons(ada):
+    EmailAddress.objects.create(user=ada, email="ada.work@example.com", verified=False)
+    client = Client()
+    log_in(client)
+    page = check_page(client.get(EMAIL_PAGE))
+    assert '<legend class="fieldset-legend">Choose an address</legend>' in page
+    assert page.count('<span class="break-all">') == 2  # long addresses wrap
+    assert "Main address" in page and "Not confirmed yet" in page and "Confirmed" in page
+    assert page.count('aria-describedby="email-actions-help"') == 3
+    assert 'id="email-actions-help"' in page
+    assert f'href="{ACCOUNT_PAGE}"' in page  # back to "Your account"
+
+
+@pytest.mark.django_db
+def test_after_choosing_a_password_the_next_step_is_signing_in():
+    page = check_page(Client().get(reverse("account_reset_password_from_key_done")))
+    assert "Your password is saved." in page
+    assert f'href="{reverse("account_login")}"' in page
 
 
 @pytest.mark.django_db
@@ -187,42 +211,36 @@ def test_the_command_refuses_an_address_two_accounts_use():
         pytest.skip("capy-project's user model keeps emails unique")
     user_without_address("twin@example.com")
     get_user_model().objects.create_user(username="twin2", email="twin@example.com")
-    with pytest.raises(CommandError, match="2 accounts use twin@example.com"):
+    with pytest.raises(CommandError, match="More than one account uses twin@example.com"):
         call_command("mark_email_verified", "twin@example.com")
 
 
 # --- Accounts created by staff ----------------------------------------------------------------
 
 
-def admin_request():
-    request = RequestFactory().post(reverse("admin:index"))
-    request.resolver_match = resolve(reverse("admin:index"))
+def request_on(match, user):
+    request = RequestFactory().post("/")
+    request.resolver_match = match
+    request.user = user
     return request
 
 
-def set_password_with_link(client, message):
-    link = message.body.split("http://testserver", 1)[1].split()[0]
-    form_page = client.get(link, follow=True)
-    form_url = form_page.redirect_chain[-1][0]
-    return client.post(form_url, {"password1": NEW_PASSWORD, "password2": NEW_PASSWORD})
-
-
 @pytest.mark.django_db
-def test_an_account_staff_create_gets_a_link_to_choose_its_password(
-    django_capture_on_commit_callbacks,
-):
-    with django_capture_on_commit_callbacks(execute=True):
-        with context.request_context(admin_request()):
-            carol = user_without_address("carol@example.com")
-    assert subjects() == ["An account was created for you"]
-    assert mail.outbox[0].to == ["carol@example.com"]
-    address = carol.emailaddress_set.get()
-    assert (address.primary, address.verified) == (True, False)
-
-    client = Client()
-    assert set_password_with_link(client, mail.outbox[0]).status_code == 302
-    assert carol.emailaddress_set.get().verified  # the link proved the address
-    assert log_in(Client(), email="carol@example.com", password=NEW_PASSWORD).url == ACCOUNT_PAGE
+def test_only_staff_on_the_user_admins_add_page_trigger_the_email(ada):
+    options = get_user_model()._meta
+    add_page = SimpleNamespace(
+        app_names=["admin"], url_name=f"{options.app_label}_{options.model_name}_add"
+    )
+    staff = get_user_model().objects.create_user(
+        username="staff", email="s@example.com", is_staff=True
+    )
+    assert is_the_user_admins_add_page(request_on(add_page, staff))
+    assert not is_the_user_admins_add_page(request_on(add_page, ada))  # not staff
+    assert not is_the_user_admins_add_page(request_on(add_page, AnonymousUser()))
+    login_page = resolve(reverse("admin:login"))  # a login system may create users here
+    assert not is_the_user_admins_add_page(request_on(login_page, staff))
+    assert not is_the_user_admins_add_page(request_on(resolve(reverse("admin:index")), staff))
+    assert not is_the_user_admins_add_page(None)
 
 
 @pytest.mark.django_db
@@ -238,29 +256,33 @@ def test_accounts_made_elsewhere_arent_emailed(django_capture_on_commit_callback
 def test_an_account_without_an_email_isnt_emailed():
     if not is_djangos_user_model():
         pytest.skip("capy-project's user model needs an email")
-    with context.request_context(admin_request()):
-        send_account_created_email(user_without_address(""))
+    with context.request_context(RequestFactory().get("/")):
+        assert send_account_created_email(user_without_address("")) is False
     assert mail.outbox == []
 
 
 @pytest.mark.django_db
-def test_django_s_own_add_user_page_works(superuser_client_factory):
+def test_django_s_own_add_user_page_sends_nothing(
+    superuser_client_factory, django_capture_on_commit_callbacks
+):
     """Django's own user admin doesn't ask for an email when adding, so nothing is sent
     (capy-project's admin asks for one)."""
     if not is_djangos_user_model():
         pytest.skip("capy-project's user model has no admin in the stand-in project")
     client = superuser_client_factory()
-    response = client.post(
-        reverse("admin:auth_user_add"),
-        {
-            "username": "dave",
-            "usable_password": "true",
-            "password1": PASSWORD,
-            "password2": PASSWORD,
-        },
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(
+            reverse("admin:auth_user_add"),
+            {
+                "username": "dave",
+                "usable_password": "true",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+            },
+        )
     assert response.status_code == 302
     assert get_user_model().objects.filter(username="dave").exists()
+    assert mail.outbox == []
 
 
 @pytest.fixture
@@ -284,3 +306,21 @@ def test_without_an_email_field_the_command_finds_allauths_addresses(settings, a
     assert EmailAddress.objects.get(email="ada.work@example.com").verified
     with pytest.raises(CommandError, match="No account uses"):
         call_command("mark_email_verified", "nobody@example.com")
+
+
+@pytest.mark.parametrize(
+    ("seconds", "words"), [(3600, "1 hour"), (259200, "72 hours"), (900, "15 minutes")]
+)
+def test_the_email_says_how_long_the_link_works(settings, seconds, words):
+    settings.PASSWORD_RESET_TIMEOUT = seconds
+    assert link_lifetime() == words
+
+
+@pytest.mark.django_db
+def test_a_clash_while_confirming_gives_a_clear_message(ada, monkeypatch):
+    def clash(user, email):
+        raise IntegrityError("unique_verified_email")
+
+    monkeypatch.setattr(services, "confirm_on_account", clash)
+    with pytest.raises(CommandError, match="couldn't be confirmed"):
+        call_command("mark_email_verified", "ada@example.com")

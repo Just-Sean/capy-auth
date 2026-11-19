@@ -1,0 +1,103 @@
+{% extends "account/base_manage_email.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's account/email.html, rewritten rather than
+  copied: each address and its badges wrap on narrow screens, the choices are grouped
+  under a legend, the buttons say they act on the chosen address, and the wording
+  matches capy-auth's ("confirmed", "main address"). It keeps allauth's form fields
+  (email, action_primary, action_send, action_remove, action_add) and its remove
+  confirmation script. Check allauth's original when upgrading allauth (a test fails
+  when it changes).
+{% endcomment %}
+{% load static allauth i18n %}
+{% block head_title %}
+    {% translate "Email addresses" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Email addresses" %}
+        {% endelement %}
+        {% if emailaddresses %}
+            <form method="post" action="{% url 'account_email' %}" class="flex flex-col gap-4">
+                {% csrf_token %}
+                <fieldset class="fieldset">
+                    <legend class="fieldset-legend">{% translate "Choose an address" %}</legend>
+                    {% for radio in emailaddress_radios %}
+                        {% with emailaddress=radio.emailaddress %}
+                            <label class="flex flex-wrap items-center gap-2 text-base text-base-content"
+                                   for="{{ radio.id }}">
+                                <input class="radio"
+                                       type="radio"
+                                       name="email"
+                                       value="{{ emailaddress.email }}"
+                                       id="{{ radio.id }}"
+                                       {% if radio.checked %}checked{% endif %}>
+                                <span class="break-all">{{ emailaddress.email }}</span>
+                                {% if emailaddress.verified %}
+                                    <span class="badge badge-success">{% translate "Confirmed" %}</span>
+                                {% else %}
+                                    <span class="badge badge-warning">{% translate "Not confirmed yet" %}</span>
+                                {% endif %}
+                                {% if emailaddress.primary %}
+                                    <span class="badge badge-primary">{% translate "Main address" %}</span>
+                                {% endif %}
+                            </label>
+                        {% endwith %}
+                    {% endfor %}
+                </fieldset>
+                <p id="email-actions-help">{% translate "These buttons act on the address you chose." %}</p>
+                <div class="flex flex-wrap gap-2">
+                    <button class="btn btn-outline"
+                            type="submit"
+                            name="action_primary"
+                            aria-describedby="email-actions-help">
+                        {% translate "Make it the main address" %}
+                    </button>
+                    <button class="btn btn-outline"
+                            type="submit"
+                            name="action_send"
+                            aria-describedby="email-actions-help">
+                        {% translate "Send a new code" %}
+                    </button>
+                    <button class="btn btn-outline btn-error"
+                            type="submit"
+                            name="action_remove"
+                            aria-describedby="email-actions-help">
+                        {% translate "Remove" %}
+                    </button>
+                </div>
+            </form>
+        {% else %}
+            {% include "account/snippets/warn_no_email.html" %}
+        {% endif %}
+        {% if can_add_email %}
+            {% element h2 %}
+                {% translate "Add an email address" %}
+            {% endelement %}
+            {% url 'account_email' as action_url %}
+            {% element form form=form method="post" action=action_url tags="email,add" %}
+                {% slot body %}
+                    {% csrf_token %}
+                    {% element fields form=form %}
+                    {% endelement %}
+                {% endslot %}
+                {% slot actions %}
+                    {% element button name="action_add" type="submit" %}
+                        {% translate "Add it" %}
+                    {% endelement %}
+                {% endslot %}
+            {% endelement %}
+        {% endif %}
+        <p>
+            <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
+        </p>
+    </div>
+{% endblock content %}
+{% block extra_body %}
+    <script src="{% static 'account/js/account.js' %}"></script>
+    <script src="{% static 'account/js/onload.js' %}"></script>
+    <script data-allauth-onload="allauth.account.forms.manageEmailForm" type="application/json">{
+    "i18n": {"confirmDelete": "{% translate 'Do you really want to remove the address you chose?' %}"}
+}
+    </script>
+{% endblock extra_body %}
