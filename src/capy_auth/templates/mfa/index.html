@@ -3,8 +3,8 @@
   capy-auth's version of allauth 65.22.1's mfa/index.html, rewritten rather than
   copied: capy-auth's wording ("Two-step sign-in", "Turn off the app", "Make new
   codes"), content spaced like capy-auth's other pages, and a way back. It keeps
-  allauth's panels, including the passkeys and security keys (WebAuthn) panel. Check allauth's original
-  when upgrading allauth (a test fails when it changes).
+  allauth's panels, including the one for passkeys and security keys (WebAuthn). Check
+  allauth's original when upgrading allauth (a test fails when it changes).
 {% endcomment %}
 {% load allauth %}
 {% load i18n %}
@@ -17,7 +17,7 @@
             {% translate "Two-step sign-in" %}
         {% endelement %}
         {% element p %}
-            {% translate "Signing in needs a code or a passkey as well as your password, so your password alone isn’t enough to get in. A passkey can also sign you in on its own." %}
+            {% translate "With two-step sign-in, your password alone isn’t enough to get in: signing in also needs a code from an app, or a passkey or security key. Passkeys and security keys can also sign you in without your password." %}
         {% endelement %}
         {% if "totp" in MFA_SUPPORTED_TYPES %}
             {% element panel %}
@@ -58,11 +58,11 @@
                 {% slot body %}
                     {% if authenticators.webauthn|length %}
                         {% element p %}
-                            {% blocktranslate count count=authenticators.webauthn|length %}You’ve added {{ count }}.{% plural %}You’ve added {{ count }}.{% endblocktranslate %}
+                            {% blocktranslate count count=authenticators.webauthn|length %}You’ve added {{ count }} passkey or security key.{% plural %}You’ve added {{ count }} passkeys or security keys.{% endblocktranslate %}
                         {% endelement %}
                     {% else %}
                         {% element p %}
-                            {% translate "None yet: sign in with your fingerprint, face or screen lock instead of typing a code." %}
+                            {% translate "None yet: sign in with your fingerprint, face, PIN or a security key instead of typing a code." %}
                         {% endelement %}
                     {% endif %}
                 {% endslot %}
@@ -70,12 +70,12 @@
                     {% if authenticators.webauthn|length %}
                         {% url 'mfa_list_webauthn' as webauthn_list_url %}
                         {% element button href=webauthn_list_url %}
-                            {% translate "Manage passkeys and keys" %}
+                            {% translate "Manage passkeys and security keys" %}
                         {% endelement %}
                     {% else %}
                         {% url 'mfa_add_webauthn' as webauthn_add_url %}
                         {% element button href=webauthn_add_url %}
-                            {% translate "Add a passkey" %}
+                            {% translate "Add a passkey or security key" %}
                         {% endelement %}
                     {% endif %}
                 {% endslot %}

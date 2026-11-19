@@ -387,8 +387,12 @@ REWRITTEN_PAGES = {
         "37e688fdef8f745254fbc6afcacebe74a288c7591743f45880bd368b886dd73e"
     ),
     "account/login.html": "bc38debd2f3c65608dc72f102170055a9c5fadbe0db7400d35eda03fd796c339",
+    # Copied into capy_auth/passkeys/ (allauth's own stay as they are).
     "mfa/webauthn/snippets/login_script.html": (
         "1451b11a9b80c6c564dfba8e38a8f646a301bf40d808af0a9ef3a8a8ba790efa"
+    ),
+    "mfa/webauthn/snippets/scripts.html": (
+        "4b202a2efbc5fa8f0bd9bf48874e20713b2a4ebced721ae6a1a87951d73a76a7"
     ),
     "mfa/webauthn/authenticator_list.html": (
         "e8be87b8c97b408e24d36056e720aa1f0a48e5332e335b6e0bafb69667cbc7ed"

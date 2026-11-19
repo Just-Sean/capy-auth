@@ -13,6 +13,7 @@ from .crypto import GENERATE_COMMANDS, SETTING, KeyProblem, configured_keys, key
 
 MFA_APP = "allauth.mfa"
 ADAPTER_PATH = "capy_auth.mfa.adapter.MFAAdapter"
+INSECURE_ORIGIN = "MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN"
 KEY_HINT = (
     f"Generate a key with:\n{GENERATE_COMMANDS}\n"
     f"Put it in the environment as {SETTING} (in a project made from capy-project, in "
@@ -82,9 +83,6 @@ def check_encryption_keys_for_deploy(app_configs, **kwargs):
     return [] if keys else [key_error(f"{SETTING} isn't set")]
 
 
-INSECURE_ORIGIN = "MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN"
-
-
 def check_passkey_origin(app_configs, **kwargs):
     """allauth's switch that lets passkeys work over plain http (for development) also
     turns off its check of where a passkey sign-in came from: never in production."""
@@ -94,8 +92,30 @@ def check_passkey_origin(app_configs, **kwargs):
         Error(
             f"{INSECURE_ORIGIN} is on in production: allauth then doesn't check which site "
             "a passkey sign-in came from.",
-            hint=f"Set {INSECURE_ORIGIN} = DEBUG (on only in development), as capy-auth's "
-            "README says.",
+            hint=f"In config/settings/users.py set {INSECURE_ORIGIN} = DEBUG (with "
+            "`from .core import DEBUG` at the top), so it's on only in development; see "
+            "capy-auth's README.",
             id="capy_auth.E009",
+        )
+    ]
+
+
+def check_passkey_forms(app_configs, **kwargs):
+    """capy-auth's forms for adding and renaming a passkey (mfa/forms.py): plain words,
+    the "sign in without my password" box ticked, names capped. Without them the site
+    still works, with allauth's wording and no limit on names."""
+    if not apps.is_installed(MFA_APP):
+        return []  # E008 reports it
+    from .forms import FORMS  # needs allauth's MFA app
+
+    configured = getattr(settings, "MFA_FORMS", {})
+    if all(configured.get(name) == path for name, path in FORMS.items()):
+        return []
+    return [
+        Warning(
+            "capy-auth's forms for adding and renaming a passkey aren't in use, so the "
+            "pages use allauth's wording and accept names of any length.",
+            hint=f"Set MFA_FORMS = {FORMS!r}, as capy-auth's README says.",
+            id="capy_auth.W006",
         )
     ]

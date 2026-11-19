@@ -265,15 +265,19 @@ def test_a_ban_during_the_code_step_stops_the_sign_in(with_app, ada):
 
 
 @pytest.mark.django_db
-def test_lifting_a_ban_keeps_the_app_and_still_asks_for_a_code(with_app, ada):
+def test_a_ban_removes_the_app_and_codes_so_lifting_it_starts_afresh(with_app, ada):
+    """Sean's decision on #28: suspension removes every two-step method, so whoever
+    added one (perhaps not the owner) can't use it once the ban is lifted."""
     ban = BannedEmail.objects.create(email="ada@example.com")
     suspend_accounts(ban)
     lift_bans(BannedEmail.objects.filter(pk=ban.pk))
-    assert Authenticator.objects.filter(user=ada, type="totp").exists()
+    assert not Authenticator.objects.filter(user=ada).exists()
     user = get_user_model().objects.get(pk=ada.pk)
     user.set_password(PASSWORD)
     user.save()
-    assert log_in(Client()).url == AUTHENTICATE
+    client = Client()
+    log_in(client)
+    assert signed_in(client)  # the password alone, no code step
 
 
 @pytest.mark.django_db

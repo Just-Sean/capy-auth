@@ -1,0 +1,12 @@
+{% load static %}
+{% comment %}
+  allauth 65.22.1's mfa/webauthn/snippets/scripts.html, with capy-auth's passkeys.js
+  (a message when a passkey attempt fails) and without its "requires JavaScript"
+  notice, which capy_auth/passkeys/status.html puts next to the button instead: in the
+  head, where the sign-in page puts these, the notice would land at the top of the
+  page. Compare with allauth's when upgrading allauth (a test fails when it changes).
+{% endcomment %}
+<script src="{% static 'mfa/js/webauthn-json.js' %}"></script>
+<script src="{% static 'mfa/js/webauthn.js' %}"></script>
+<script src="{% static 'capy_auth/js/passkeys.js' %}"></script>
+<script src="{% static 'account/js/onload.js' %}"></script>

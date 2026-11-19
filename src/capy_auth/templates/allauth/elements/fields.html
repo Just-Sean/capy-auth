@@ -40,7 +40,9 @@
         {% endif %}
         {% if field.name == "code" %}
             <div class="label whitespace-normal" id="{{ field.auto_id }}_hint">
-                {% if field|is_app_code %}
+                {% if attrs.recovery_code %}
+                    {% translate "One of the recovery codes you saved when you set up two-step sign-in." %}
+                {% elif field|is_app_code %}
                     {% translate "The 6-digit code from your authenticator app, or one of your recovery codes." %}
                 {% else %}
                     {% translate "The code from the email we sent you: 8 letters and numbers, like ABCD-1234. It only works for a short time." %}

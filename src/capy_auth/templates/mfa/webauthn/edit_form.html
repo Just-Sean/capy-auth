@@ -13,7 +13,7 @@
         {% element h1 %}
             {% translate "Rename a passkey or security key" %}
         {% endelement %}
-        {% url 'mfa_edit_webauthn' as action_url %}
+        {% url 'mfa_edit_webauthn' pk=authenticator.pk as action_url %}
         {% element form form=form method="post" action=action_url %}
             {% slot body %}
                 {% csrf_token %}

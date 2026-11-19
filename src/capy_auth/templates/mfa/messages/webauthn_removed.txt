@@ -1,1 +1,1 @@
-{% load i18n %}{% translate "Passkey or security key removed." %}
+{% load i18n %}{% translate "Passkey or security key removed. If it was your only way of doing two-step sign-in, two-step sign-in is now off." %}

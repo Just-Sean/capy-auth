@@ -24,6 +24,11 @@ def user_display(user):
 
 
 EMAIL_NOT_CONFIRMED = _("This email address couldn’t be confirmed.")
+# The "Other ways to confirm it's you" links, in the words capy-auth's pages use.
+REAUTHENTICATION_LINKS = {
+    "mfa_reauthenticate": _("Use your authenticator app or a recovery code"),
+    "mfa_reauthenticate:webauthn": _("Use a passkey or security key"),
+}
 
 
 class AccountAdapter(DefaultAccountAdapter):
@@ -61,6 +66,13 @@ class AccountAdapter(DefaultAccountAdapter):
             self.add_message(request, messages.ERROR, message=EMAIL_NOT_CONFIRMED)
             return False
         return super().confirm_email(request, email_address)
+
+    def get_reauthentication_methods(self, user):
+        """allauth's ways to confirm it's you, worded like capy-auth's pages."""
+        methods = super().get_reauthentication_methods(user)
+        for method in methods:
+            method["description"] = REAUTHENTICATION_LINKS.get(method["id"], method["description"])
+        return methods
 
     def send_mail(self, template_prefix, email, context_data):
         """Builds the email as allauth does, then has the background worker send it

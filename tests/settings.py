@@ -97,9 +97,15 @@ PASSWORD_RESET_TIMEOUT = 60 * 60  # reset links work for 1 hour
 # Not behind a proxy here; projects behind one set 1 (README).
 ALLAUTH_TRUSTED_PROXY_COUNT = 0
 
-# MFA, as the README tells a project: authenticator apps and recovery codes, secrets
-# encrypted by capy-auth's adapter with a key made each run (nothing to keep secret).
+# MFA, as the README tells a project: authenticator apps, passkeys and security keys, and
+# recovery codes, secrets encrypted by capy-auth's adapter with a key made each run
+# (nothing to keep secret). MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN stays off: the test
+# authenticator signs for https://testserver, so the origin check really runs.
 MFA_ADAPTER = "capy_auth.mfa.adapter.MFAAdapter"
+MFA_FORMS = {
+    "add_webauthn": "capy_auth.mfa.forms.AddPasskeyForm",
+    "edit_webauthn": "capy_auth.mfa.forms.EditPasskeyForm",
+}
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes", "webauthn"]
 MFA_PASSKEY_LOGIN_ENABLED = True  # "Sign in with a passkey"; signing up with one stays off
 MFA_TOTP_TOLERANCE = 1  # the previous 30-second code still works (RFC 6238)

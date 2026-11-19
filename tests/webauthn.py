@@ -36,18 +36,20 @@ class SoftPasskey:
         self.credential_id = os.urandom(16)
         self.user_handle = None
         self.counter = 0
+        self.verifies_user = True  # asks for a fingerprint, face or PIN (the UV flag)
+        self.origin = ORIGIN  # the site the browser says it's on
 
     def register(self, creation_options):
         options = creation_options["publicKey"]
         self.user_handle = options["user"]["id"]
         client_data = CollectedClientData.create(
-            CollectedClientData.TYPE.CREATE, websafe_decode(options["challenge"]), ORIGIN
+            CollectedClientData.TYPE.CREATE, websafe_decode(options["challenge"]), self.origin
         )
         public_key = ES256.from_cryptography_key(self.key.public_key())
         credential = AttestedCredentialData.create(Aaguid.NONE, self.credential_id, public_key)
         auth_data = AuthenticatorData.create(
             sha256(options["rp"]["id"].encode()),
-            FLAG.UP | FLAG.UV | FLAG.AT,
+            self.flags() | FLAG.AT,
             self.counter,
             credential,
         )
@@ -64,10 +66,10 @@ class SoftPasskey:
         options = request_options["publicKey"]
         self.counter += 1
         client_data = CollectedClientData.create(
-            CollectedClientData.TYPE.GET, websafe_decode(options["challenge"]), ORIGIN
+            CollectedClientData.TYPE.GET, websafe_decode(options["challenge"]), self.origin
         )
         auth_data = AuthenticatorData.create(
-            sha256(options["rpId"].encode()), FLAG.UP | FLAG.UV, self.counter
+            sha256(options["rpId"].encode()), self.flags(), self.counter
         )
         signature = self.key.sign(
             bytes(auth_data) + sha256(bytes(client_data)), ec.ECDSA(hashes.SHA256())
@@ -80,6 +82,9 @@ class SoftPasskey:
         if self.passkey:
             response["userHandle"] = self.user_handle
         return self.answer(response, {})
+
+    def flags(self):
+        return FLAG.UP | FLAG.UV if self.verifies_user else FLAG.UP
 
     def answer(self, response, extensions):
         credential_id = websafe_encode(self.credential_id)

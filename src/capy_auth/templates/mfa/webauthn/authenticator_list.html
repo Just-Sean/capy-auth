@@ -3,7 +3,9 @@
   capy-auth's version of allauth 65.22.1's mfa/webauthn/authenticator_list.html,
   rewritten rather than copied: each passkey or security key is a card (no table to
   scroll sideways on phones), dates are plain dates (no django.contrib.humanize
-  needed), capy-auth's wording, and a way back. Check allauth's original when
+  needed), capy-auth's wording, and a way back. allauth's "passkey" or "security key"
+  type is left out: the browser reports it, nothing enforces it, and any key can sign
+  in on its own if the device allows (mfa/forms.py). Check allauth's original when
   upgrading allauth (a test fails when it changes).
 {% endcomment %}
 {% load i18n allauth %}
@@ -15,7 +17,7 @@
         {% element h1 %}
             {% translate "Passkeys and security keys" %}
         {% endelement %}
-        {% if authenticators|length == 0 %}
+        {% if not authenticators %}
             {% element p %}
                 {% translate "None added yet." %}
             {% endelement %}
@@ -24,29 +26,19 @@
                 {% for authenticator in authenticators %}
                     <li class="card card-border bg-base-100">
                         <div class="card-body gap-2">
-                            <p class="flex flex-wrap items-center gap-2">
-                                <span class="font-semibold break-words">{{ authenticator }}</span>
-                                {% if authenticator.wrap.is_passwordless is True %}
-                                    <span class="badge badge-primary">{% translate "Passkey: signs you in on its own" %}</span>
-                                {% elif authenticator.wrap.is_passwordless is False %}
-                                    <span class="badge badge-secondary">{% translate "Security key: a second step" %}</span>
-                                {% else %}
-                                    <span class="badge badge-warning">{% translate "Type not known" %}</span>
-                                {% endif %}
-                            </p>
+                            <p class="font-semibold break-words">{{ authenticator }}</p>
                             <p>
-                                {% blocktranslate with added=authenticator.created_at|date:"DATE_FORMAT" %}Added {{ added }}.{% endblocktranslate %}
+                                {% blocktranslate with added=authenticator.created_at|date:"DATE_FORMAT" %}Added: {{ added }}{% endblocktranslate %}
+                                <br>
                                 {% if authenticator.last_used_at %}
-                                    {% blocktranslate with used=authenticator.last_used_at|date:"DATE_FORMAT" %}Last used {{ used }}.{% endblocktranslate %}
+                                    {% blocktranslate with used=authenticator.last_used_at|date:"DATE_FORMAT" %}Last used: {{ used }}{% endblocktranslate %}
                                 {% else %}
-                                    {% translate "Not used yet." %}
+                                    {% translate "Not used yet" %}
                                 {% endif %}
                             </p>
                             <div class="flex flex-wrap gap-2">
-                                {% url 'mfa_edit_webauthn' pk=authenticator.pk as edit_url %}
-                                <a class="btn btn-sm" href="{{ edit_url }}">{% blocktranslate with name=authenticator %}Rename {{ name }}{% endblocktranslate %}</a>
-                                {% url 'mfa_remove_webauthn' pk=authenticator.pk as remove_url %}
-                                <a class="btn btn-sm btn-outline btn-error" href="{{ remove_url }}">{% blocktranslate with name=authenticator %}Remove {{ name }}{% endblocktranslate %}</a>
+                                <a class="btn btn-sm h-auto min-h-8 max-w-full whitespace-normal break-words" href="{% url 'mfa_edit_webauthn' pk=authenticator.pk %}">{% blocktranslate with name=authenticator %}Rename {{ name }}{% endblocktranslate %}</a>
+                                <a class="btn btn-sm btn-outline btn-error h-auto min-h-8 max-w-full whitespace-normal break-words" href="{% url 'mfa_remove_webauthn' pk=authenticator.pk %}">{% blocktranslate with name=authenticator %}Remove {{ name }}{% endblocktranslate %}</a>
                             </div>
                         </div>
                     </li>
@@ -54,8 +46,7 @@
             </ul>
         {% endif %}
         <p>
-            {% url 'mfa_add_webauthn' as add_url %}
-            <a class="btn btn-primary" href="{{ add_url }}">{% translate "Add a passkey or security key" %}</a>
+            <a class="btn btn-primary" href="{% url 'mfa_add_webauthn' %}">{% translate "Add a passkey or security key" %}</a>
         </p>
         <p>
             <a class="link" href="{% url 'mfa_index' %}">{% translate "Back to two-step sign-in" %}</a>

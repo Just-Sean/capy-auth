@@ -1,8 +1,10 @@
 {% extends "account/base_reauthenticate.html" %}
 {% comment %}
   capy-auth's version of allauth 65.22.1's mfa/webauthn/reauthenticate.html: the same
-  form and script, with the field's own label and capy-auth's button wording. Check
-  allauth's original when upgrading allauth (a test fails when it changes).
+  form and script, with the field's own label, capy-auth's button wording, a button
+  that does nothing without JavaScript (with a notice instead) and a status line when
+  it fails. Check allauth's original when upgrading allauth (a test fails when it
+  changes).
 {% endcomment %}
 {% load i18n %}
 {% load allauth %}
@@ -16,13 +18,14 @@
             {{ redirect_field }}
         {% endslot %}
         {% slot actions %}
-            {% element button id="mfa_webauthn_reauthenticate" type="submit" tags="primary,mfa,login" %}
+            {% element button id="mfa_webauthn_reauthenticate" type="button" tags="primary,mfa,login" %}
                 {% translate "Use a passkey or security key" %}
             {% endelement %}
         {% endslot %}
     {% endelement %}
+    {% include "capy_auth/passkeys/status.html" %}
     {{ js_data|json_script:"js_data" }}
-    {% include "mfa/webauthn/snippets/scripts.html" %}
+    {% include "capy_auth/passkeys/scripts.html" %}
     <script data-allauth-onload="allauth.webauthn.forms.authenticateForm" type="application/json">{
     "ids": {
         "authenticate": "mfa_webauthn_reauthenticate",

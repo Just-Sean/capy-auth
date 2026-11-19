@@ -696,6 +696,16 @@ def test_without_allauths_sessions_app_a_ban_still_works(monkeypatch, ban_in_adm
     assert not is_active(mallory)
 
 
+@pytest.mark.django_db
+def test_without_allauths_mfa_app_a_ban_still_works(monkeypatch, ban_in_admin, mallory):
+    installed = apps.is_installed
+    monkeypatch.setattr(
+        apps, "is_installed", lambda name: name != "allauth.mfa" and installed(name)
+    )
+    ban_in_admin(BANNED)
+    assert not is_active(mallory)
+
+
 # --- Signed out everywhere ---------------------------------------------------------------
 
 

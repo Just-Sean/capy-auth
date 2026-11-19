@@ -15,8 +15,9 @@ from capy_auth.mfa.crypto import SecretUnreadable
 
 logger = logging.getLogger("capy_auth")
 
-# Names of the pages this covers: allauth's account and sessions pages and capy-auth's own.
-ACCOUNT_PAGE_PREFIXES = ("account_", "usersessions_", "capy_auth_")
+# Names of the pages this covers: allauth's account, two-step sign-in (including passkey
+# sign-in) and sessions pages, and capy-auth's own.
+ACCOUNT_PAGE_PREFIXES = ("account_", "mfa_", "usersessions_", "capy_auth_")
 # Cache client libraries whose own errors mean the cache is down.
 CACHE_CLIENT_MODULES = ("redis", "pymemcache", "pylibmc")
 PROBE_KEY = "capy_auth:cache-probe"

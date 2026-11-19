@@ -1,1 +1,1 @@
-{% load i18n %}{% translate "Your authenticator app no longer gives sign-in codes here." %}
+{% load i18n %}{% translate "Your authenticator app no longer gives sign-in codes here. If it was your only way of doing two-step sign-in, two-step sign-in is now off." %}

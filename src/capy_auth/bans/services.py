@@ -34,9 +34,11 @@ def suspend_accounts(ban):
     recorded them; lifting the ban signs nobody back in (the person chooses a new
     password with an emailed link). It's a database change, so a ban that's rolled
     back changes nothing. The account's entries on the "Signed-in devices" page go
-    too. An account another ban already suspended is remembered too, so lifting either
-    ban alone doesn't reactivate it; one staff deactivated by hand is left alone.
-    Returns how many were suspended."""
+    too, and so does its two-step sign-in (authenticator app, passkeys, security keys,
+    recovery codes): a passkey would otherwise sign the account straight back in once
+    the ban is lifted, even one someone else added. An account another ban already
+    suspended is remembered too, so lifting either ban alone doesn't reactivate it; one
+    staff deactivated by hand is left alone. Returns how many were suspended."""
     matches = accounts_using(ban.email)
     accounts = list(matches.filter(is_active=True))
     with transaction.atomic():
@@ -46,6 +48,7 @@ def suspend_accounts(ban):
             account.save(update_fields=["is_active", "password"])
         ban.suspended_accounts.add(*accounts, *matches.filter(pk__in=suspended_by_bans()))
         forget_sessions(accounts)
+        forget_two_step(accounts)
     addresses = [user_email(account) or ban.email for account in accounts]
     request = context.request
     transaction.on_commit(lambda: send_suspension_notices(addresses, request))
@@ -61,6 +64,16 @@ def forget_sessions(accounts):
     from allauth.usersessions.models import UserSession
 
     UserSession.objects.filter(user__in=accounts).delete()
+
+
+def forget_two_step(accounts):
+    """Removes these accounts' two-step sign-in methods: authenticator app, passkeys,
+    security keys and recovery codes. Skipped when allauth's MFA app isn't installed."""
+    if not apps.is_installed("allauth.mfa"):
+        return
+    from allauth.mfa.models import Authenticator
+
+    Authenticator.objects.filter(user__in=accounts).delete()
 
 
 def send_suspension_notices(addresses, request):
