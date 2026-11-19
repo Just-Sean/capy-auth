@@ -2,7 +2,7 @@
 
 from django.contrib import admin, messages
 from django.shortcuts import render
-from django.urls import path
+from django.urls import include, path
 
 
 def layout_check(request):
@@ -14,4 +14,5 @@ def layout_check(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("layout-check/", layout_check),
+    path("accounts/", include("allauth.urls")),
 ]

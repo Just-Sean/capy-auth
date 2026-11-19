@@ -29,6 +29,17 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
 - **Made for capy projects:** a project made from capy-project, styled with
   capy-theme. Its pages extend the project's `layout.html` and use daisyUI 5 classes,
   so capy-theme's active theme styles them; it never imports capy-theme.
+- **Pages** come from allauth. capy-auth overrides only allauth's page frame and its
+  small building blocks, under allauth's own template names:
+  `templates/allauth/layouts/base.html` puts every allauth page inside the project's
+  `layout.html` (title, head and content blocks; allauth's scripts go in the head, and
+  its own menu and messages list are left out), and `templates/allauth/elements/`
+  draws buttons, fields, forms, alerts, badges, panels and tables with daisyUI classes.
+  The `daisy_widget` filter (`templatetags/capy_auth_forms.py`) gives each form input
+  daisyUI's class for its kind. Every form field gets a visible label, even where
+  allauth asks for none. Two allauth pages, `account/email_change.html` and
+  `account/phone_change.html`, are copied with their inline style (which the Content
+  Security Policy blocks) replaced by the `hidden` attribute.
 - **The stand-in project** (`tests/settings.py`, `tests/urls.py`) is the smallest
   Django project that runs the app, so the tests prove it works outside any one
   project. It has allauth, capy-project's strict Content Security Policy (enforced),
@@ -67,7 +78,9 @@ In a project made from capy-project, with its database running
    can't be built into its image.
 
 2. Add `"capy_auth"` to `INSTALLED_APPS` in `config/settings/core.py`, in the
-   "your apps" part at the top.
+   "your apps" part at the top. It must come before allauth's apps (`"allauth"`,
+   `"allauth.account"`, …), so its versions of allauth's page templates are the ones
+   Django uses.
 3. If the module has URLs, include them in `config/urls.py` (and change its import to
    `from django.urls import include, path`):
    `path("capy-auth/", include("capy_auth.urls"))`.
@@ -109,7 +122,16 @@ In a project made from capy-project, with its database running
 
    If this module is a theme or an app shell, also add the line this README gives to
    the project's `layout.html`, where its comments say (see [Pages](#pages)).
-6. Create its tables, then run the project's tests:
+6. capy-auth's pages use daisyUI classes, which capy-theme styles. Tailwind only
+   includes classes it finds in the files it scans, so add an `@source` line to the
+   project's Tailwind source file pointing at the installed `capy_auth` folder (the
+   whole folder: some classes are in its Python files). This prints where it is:
+
+   ```bash
+   uv run python -c "import capy_auth, pathlib; print(pathlib.Path(capy_auth.__file__).parent)"
+   ```
+
+7. Create its tables, then run the project's tests:
 
    ```bash
    uv run python manage.py migrate      # production's migrate step does this by itself
@@ -153,6 +175,10 @@ Never log secrets, passwords, tokens or personal data; log IDs instead.
 - Link to users with `settings.AUTH_USER_MODEL`, never a project's `User` class.
 - Keep templates in `src/capy_auth/templates/capy_auth/` and static
   files in `src/capy_auth/static/capy_auth/`, so names never clash.
+  **Exception:** templates that replace allauth's keep allauth's names
+  (`templates/allauth/…`, `templates/account/…`), since that's how Django picks
+  capy-auth's version over allauth's. Any other template capy-auth adds goes in
+  `templates/capy_auth/`.
 - Read settings with the `CAPY_AUTH_` prefix and a default (see
   Settings), when they're used (in forms, views, validation), never in a model field's
   definition (`choices`, `max_length`, `default`, `upload_to`): a project that changed
@@ -658,9 +684,14 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/` | The Django app that projects install |
 | `src/capy_auth/apps.py` | The app's name, label and admin title |
 | `src/capy_auth/models.py` | Database models (empty to start) |
+| `src/capy_auth/templates/allauth/layouts/base.html` | Puts every allauth page inside the project's `layout.html` |
+| `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
+| `src/capy_auth/templates/account/` | allauth pages copied with their inline style removed (compare with allauth's when upgrading it) |
+| `src/capy_auth/templatetags/capy_auth_forms.py` | The `daisy_widget` filter: daisyUI's class for each kind of form input |
+| `tests/test_pages.py` | Checks allauth's pages render inside the layout under the strict policy, with daisyUI inputs and visible labels |
 | `src/capy_auth/migrations/` | Database migrations (see Database) |
 | `tests/settings.py` | A tiny stand-in project for the tests, with allauth, capy-project's Content Security Policy and a choice of user model (`TEST_USER_MODEL`) |
-| `tests/urls.py` | The stand-in project's URLs; add the module's here once it has some |
+| `tests/urls.py` | The stand-in project's URLs: allauth's pages under `accounts/`, and a page its own tests use |
 | `tests/templates/` | Copies of capy-project's `base.html` and `layout.html`, which the module's pages extend |
 | `tests/email_users/` | A copy of capy-project's user model, used with `TEST_USER_MODEL=email` |
 | `tests/test_stand_in_project.py` | Checks the stand-in project gives the module what a capy project does |
