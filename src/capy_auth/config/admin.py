@@ -3,6 +3,7 @@ can be changed but not added to or deleted. The admin records each change in its
 history. It also shows, read-only, settings that live on the server (never their
 secret values)."""
 
+from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect
@@ -25,22 +26,22 @@ class AuthSettingsAdmin(admin.ModelAdmin):
         try:
             keys = configured_keys()
         except KeyProblem as problem:
-            return _("Not working: %(problem)s. See capy-auth's README, install step 4.") % {
-                "problem": problem
-            }
-        if not keys:
+            return _("Not working: %(problem)s.") % {"problem": problem}
+        if keys:
+            return ngettext(
+                "Set up: encrypted with the key in %(setting)s, kept on the server.",
+                "Set up: encrypted with the first of %(count)d keys in %(setting)s, kept "
+                "on the server.",
+                len(keys),
+            ) % {"setting": SETTING, "count": len(keys)}
+        if settings.DEBUG:
             return _(
                 "A development-only key is in use: %(setting)s isn't set. Set a real key "
                 "on the server before going to production."
             ) % {"setting": SETTING}
-        return ngettext(
-            "Encrypted with the key in %(setting)s, kept on the server (1 key). Whoever "
-            "runs the server backs it up with the project's other secrets.",
-            "Encrypted with the keys in %(setting)s, kept on the server (%(count)d keys; "
-            "the first encrypts). Whoever runs the server backs them up with the "
-            "project's other secrets.",
-            len(keys),
-        ) % {"setting": SETTING, "count": len(keys)}
+        return _(
+            "Not working: %(setting)s isn't set, so two-step sign-in can't be set up or used."
+        ) % {"setting": SETTING}
 
     def has_add_permission(self, request):
         return False

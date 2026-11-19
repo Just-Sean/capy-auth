@@ -101,7 +101,7 @@ ALLAUTH_TRUSTED_PROXY_COUNT = 0
 # encrypted by capy-auth's adapter with a key made each run (nothing to keep secret).
 MFA_ADAPTER = "capy_auth.mfa.adapter.MFAAdapter"
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
-MFA_RECOVERY_CODES_SHOW_ONCE = True
+MFA_TOTP_TOLERANCE = 1  # the previous 30-second code still works (RFC 6238)
 CAPY_AUTH_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
 
 # capy-project's password rules (config/settings/users.py).

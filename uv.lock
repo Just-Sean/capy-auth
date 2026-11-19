@@ -63,7 +63,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cryptography", specifier = ">=50.0.2,<51" },
+    { name = "cryptography", specifier = ">=50.0.2" },
     { name = "django", specifier = ">=6.1,<7" },
     { name = "django-allauth", extras = ["mfa", "socialaccount"], specifier = ">=65.22.1,<66" },
 ]

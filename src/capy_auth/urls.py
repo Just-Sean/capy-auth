@@ -18,4 +18,12 @@ if apps.is_installed("allauth.usersessions"):  # without it, Django's checks say
 
     # Before allauth's own page, which it replaces (same address and name).
     urlpatterns.append(path("sessions/", sessions_page, name="usersessions_list"))
+if apps.is_installed("allauth.mfa"):  # without it, Django's checks say so (E008)
+    from allauth.mfa.totp.views import activate_totp
+    from django.views.decorators.cache import never_cache
+
+    # allauth's setup page, which shows the new secret, kept out of browser caches.
+    urlpatterns.append(
+        path("2fa/totp/activate/", never_cache(activate_totp), name="mfa_activate_totp")
+    )
 urlpatterns.append(path("", include("allauth.urls")))

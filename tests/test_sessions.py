@@ -223,9 +223,8 @@ def test_without_the_sessions_app_capy_auth_loads_none_of_it(monkeypatch):
     try:
         apps.get_app_config("capy_auth").ready()  # connects nothing for sessions
         urls = importlib.reload(capy_auth.urls)
-        assert [p.name for p in urls.urlpatterns if getattr(p, "name", None)] == [
-            "capy_auth_account"
-        ]
+        names = [p.name for p in urls.urlpatterns if getattr(p, "name", None)]
+        assert "capy_auth_account" in names and "usersessions_list" not in names
     finally:
         monkeypatch.undo()
         importlib.reload(capy_auth.urls)

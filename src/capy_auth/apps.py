@@ -22,7 +22,11 @@ class CapyAuthConfig(AppConfig):
             check_starting_values,
         )
         from capy_auth.limits.checks import check_email_can_be_sent
-        from capy_auth.mfa.checks import check_encryption_keys, check_mfa_setup
+        from capy_auth.mfa.checks import (
+            check_encryption_keys,
+            check_encryption_keys_for_deploy,
+            check_mfa_setup,
+        )
         from capy_auth.sessions.checks import check_session_store, check_user_sessions
 
         checks.register(check_account_adapter)
@@ -36,6 +40,7 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_session_store)
         checks.register(check_mfa_setup)
         checks.register(check_encryption_keys)
+        checks.register(check_encryption_keys_for_deploy, deploy=True)
         ban_receivers.connect_receivers()
         account_receivers.connect_receivers()
         if apps.is_installed("allauth.usersessions"):  # E006 reports it missing
@@ -44,3 +49,7 @@ class CapyAuthConfig(AppConfig):
             from capy_auth.sessions.recording import record_django_login
 
             user_logged_in.connect(record_django_login, dispatch_uid="capy_auth_record_login")
+        if apps.is_installed("allauth.mfa"):  # E008 reports it missing
+            from capy_auth.mfa import receivers as mfa_receivers
+
+            mfa_receivers.connect_receivers()

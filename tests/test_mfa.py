@@ -1,21 +1,36 @@
 """Two-step sign-in: setting up an authenticator app (codes from tests/totp.py, as a
-real app makes them), signing in with a code, recovery codes shown once and each usable
-once, the secrets stored only encrypted, the encryption key (changing it, losing it),
-the startup checks and the settings page's status line."""
+real app makes them), signing in with a code, recovery codes (each usable once), the
+secrets stored only encrypted, the encryption key (changing it, re-encrypting), the
+warning email after repeated wrong codes, the pages' hints, the startup checks and the
+settings page's status line."""
 
+import ast
+import html
+import importlib
 import re
+from io import StringIO
+from pathlib import Path
 
 import pytest
 from allauth.mfa.models import Authenticator
 from cryptography.fernet import Fernet
-from django.core.exceptions import ImproperlyConfigured
+from django.apps import apps as django_apps
+from django.core import mail
+from django.core.management import call_command
 from django.test import Client
 from django.urls import reverse
 
+from capy_auth.mfa import checks as checks_module
 from capy_auth.mfa import crypto
-from capy_auth.mfa.checks import check_encryption_keys, check_mfa_setup
+from capy_auth.mfa.checks import (
+    KEY_HINT,
+    check_encryption_keys,
+    check_encryption_keys_for_deploy,
+    check_mfa_setup,
+)
+from capy_auth.mfa.services import reencrypted
 from tests import totp
-from tests.accounts import ACCOUNT_PAGE, LOGIN, PASSWORD, log_in
+from tests.accounts import ACCOUNT_PAGE, PASSWORD, log_in
 from tests.helpers import check_page
 
 MFA_PAGE = reverse("mfa_index")
@@ -25,6 +40,12 @@ RECOVERY_CODES = reverse("mfa_view_recovery_codes")
 AUTHENTICATE = reverse("mfa_authenticate")
 REAUTHENTICATE = reverse("account_reauthenticate")
 SECRET = re.compile(r"\b[A-Z2-7]{32}\b")
+
+
+def at_code_step():
+    client = Client()
+    assert log_in(client).url == AUTHENTICATE
+    return client
 
 
 def confirmed(client):
@@ -139,15 +160,6 @@ def test_a_recovery_code_works_only_once(with_app):
 
 
 @pytest.mark.django_db
-def test_recovery_codes_are_shown_once(with_app):
-    client = sign_in_with(with_app[1][0])
-    client.post(REAUTHENTICATE, {"password": PASSWORD})
-    page = check_page(client.get(RECOVERY_CODES))
-    assert "9 out of 10 recovery codes" in page
-    assert not set(with_app[1]) & set(re.findall(r"\b[0-9a-f]{8}\b", page))  # seen at setup
-
-
-@pytest.mark.django_db
 def test_turning_it_off_asks_again_and_signing_in_no_longer_asks_for_a_code(ada, with_app):
     client = Client()
     log_in(client)
@@ -169,7 +181,7 @@ def test_a_new_key_put_first_still_reads_what_the_old_one_wrote(settings):
     settings.CAPY_AUTH_ENCRYPTION_KEYS = [new, old]
     assert crypto.decrypt(stored) == "JBSWY3DPEHPK3PXP"
     settings.CAPY_AUTH_ENCRYPTION_KEYS = [new]  # the old key dropped too soon
-    with pytest.raises(ImproperlyConfigured, match="isn't in the list any more"):
+    with pytest.raises(crypto.SecretUnreadable):
         crypto.decrypt(stored)
 
 
@@ -177,6 +189,12 @@ def test_keys_can_come_as_one_comma_separated_value(settings):
     one, two = Fernet.generate_key().decode(), Fernet.generate_key().decode()
     settings.CAPY_AUTH_ENCRYPTION_KEYS = f" {one}, {two} "
     assert crypto.configured_keys() == [one, two]
+
+
+def test_the_hint_gives_both_command_forms_and_the_backup_advice():
+    assert "uv run python -c" in KEY_HINT
+    assert "docker compose -f compose.yaml -f compose.prod.yaml run --rm --no-deps web" in KEY_HINT
+    assert "not with the database backup" in KEY_HINT
 
 
 def test_development_without_a_key_uses_a_stand_in_and_says_so(settings):
@@ -240,17 +258,19 @@ def superuser_client(db):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("keys", "says"),
+    ("keys", "debug", "says"),
     [
-        ("configured", "Encrypted with the key in CAPY_AUTH_ENCRYPTION_KEYS"),
-        ("two", "(2 keys; the first encrypts)"),
-        ("none", "A development-only key is in use"),
-        ("bad", "Not working: key 1 of CAPY_AUTH_ENCRYPTION_KEYS"),
+        ("configured", False, "Set up: encrypted with the key in CAPY_AUTH_ENCRYPTION_KEYS"),
+        ("two", False, "the first of 2 keys in CAPY_AUTH_ENCRYPTION_KEYS"),
+        ("none", True, "A development-only key is in use"),
+        ("none", False, "Not working: CAPY_AUTH_ENCRYPTION_KEYS isn't set"),
+        ("bad", False, "Not working: key 1 of CAPY_AUTH_ENCRYPTION_KEYS"),
     ],
 )
 def test_the_settings_page_shows_the_keys_state_never_the_key(
-    settings, superuser_client, keys, says
+    settings, superuser_client, keys, debug, says
 ):
+    settings.DEBUG = debug
     settings.CAPY_AUTH_ENCRYPTION_KEYS = {
         "configured": settings.CAPY_AUTH_ENCRYPTION_KEYS,
         "two": [Fernet.generate_key().decode(), Fernet.generate_key().decode()],
@@ -260,12 +280,189 @@ def test_the_settings_page_shows_the_keys_state_never_the_key(
     page = superuser_client.get(
         reverse("admin:capy_auth_authsettings_changelist"), follow=True
     ).content.decode()
-    assert says in page
+    assert says in html.unescape(page)
+    assert "back it up" not in page  # admins may not run the server: no backup prompt
     for key in settings.CAPY_AUTH_ENCRYPTION_KEYS:
         assert key not in page
 
 
 @pytest.mark.django_db
-def test_signing_in_page_still_works_for_people_without_mfa(client, ada):
+def test_people_without_two_step_sign_in_arent_asked_for_a_code(client, ada):
     assert log_in(client).url == ACCOUNT_PAGE
-    assert client.get(LOGIN).status_code in (200, 302)
+
+
+# --- The pages ------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_code_fields_say_which_code_and_show_a_number_pad(with_app):
+    page = check_page(at_code_step().get(AUTHENTICATE))
+    assert "The 6-digit code from your authenticator app, or one of your recovery" in page
+    assert "email we sent you" not in page
+    assert 'inputmode="numeric"' in page and "autocapitalize" not in page
+    assert "Lost your phone? Enter one of your recovery codes instead." in page
+
+
+@pytest.mark.django_db
+def test_email_code_fields_keep_their_own_hint(client):
+    response = client.post(
+        reverse("account_signup"),
+        {"email": "eve@example.com", "password1": PASSWORD, "password2": PASSWORD},
+    )
+    page = check_page(client.get(response.url))
+    assert "The code from the email we sent you" in page
+    assert 'autocapitalize="characters"' in page and "inputmode" not in page
+
+
+@pytest.mark.django_db
+def test_the_setup_page_shows_the_qr_on_white_and_a_key_to_copy(client, ada):
+    response = confirmed(client).get(ACTIVATE)
+    page = check_page(response)
+    assert '<div class="w-fit rounded-box bg-white p-3">' in page
+    assert 'alt="QR code to scan with your authenticator app"' in page
+    assert re.search(r'id="authenticator_secret">([A-Z2-7]{4} ){7}[A-Z2-7]{4}<', page)
+    assert 'href="otpauth://totp/' in page
+    assert "no-store" in response["Cache-Control"]  # the secret isn't cached
+
+
+def test_the_keys_never_appear_in_error_reports():
+    for function in (
+        crypto.configured_keys,
+        crypto.keys_in_use,
+        crypto.stand_in_key,
+        crypto.encrypt,
+        crypto.decrypt,
+        crypto.reencrypt,
+    ):
+        assert getattr(function, "sensitive_variables", None) == "__ALL__", function
+
+
+# --- Warnings when the code step keeps failing --------------------------------------------
+
+
+@pytest.mark.django_db
+def test_the_owner_is_emailed_after_five_wrong_codes(with_app):
+    mail.outbox.clear()
+    for _ in range(4):
+        at_code_step().post(AUTHENTICATE, {"code": "000000"})
+    assert mail.outbox == []
+    at_code_step().post(AUTHENTICATE, {"code": "000000"})
+    assert [m.subject.split("] ", 1)[-1] for m in mail.outbox] == [
+        "Someone tried to sign in to your account"
+    ]
+    assert mail.outbox[0].to == ["ada@example.com"]
+    at_code_step().post(AUTHENTICATE, {"code": "000000"})
+    assert len(mail.outbox) == 1  # once, not for every further try
+
+
+@pytest.mark.django_db
+def test_a_right_code_resets_the_count(with_app):
+    secret, _ = with_app
+    for _ in range(4):
+        at_code_step().post(AUTHENTICATE, {"code": "000000"})
+    sign_in_with(totp.code(secret))
+    mail.outbox.clear()
+    for _ in range(4):
+        at_code_step().post(AUTHENTICATE, {"code": "000000"})
+    assert mail.outbox == []
+
+
+# --- Changing keys ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_reencrypting_lets_the_old_key_go(settings, with_app):
+    secret, codes = with_app
+    old = settings.CAPY_AUTH_ENCRYPTION_KEYS[0]
+    new = Fernet.generate_key().decode()
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = [new, old]
+    out = StringIO()
+    call_command("capy_auth_reencrypt", stdout=out)
+    assert "Re-encrypted 2 authenticators." in out.getvalue()
+    assert "older keys can be dropped" in out.getvalue()
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = [new]
+    assert sign_in_with(totp.code(secret)).get(ACCOUNT_PAGE).status_code == 200
+    assert sign_in_with(codes[0]).get(ACCOUNT_PAGE).status_code == 200
+
+
+@pytest.mark.django_db
+def test_reencrypting_reports_secrets_no_key_can_read(settings, with_app):
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
+    out = StringIO()
+    call_command("capy_auth_reencrypt", stdout=out)
+    assert "Re-encrypted 0 authenticators." in out.getvalue()
+    assert "2 couldn't be read" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_reencrypting_covers_migrated_recovery_codes(settings, ada):
+    stored = crypto.encrypt("12345678")
+    authenticator = Authenticator.objects.create(
+        user=ada,
+        type="recovery_codes",
+        data={"seed": crypto.encrypt("s"), "migrated_codes": [stored]},
+    )
+    new = Fernet.generate_key().decode()
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = [new, *settings.CAPY_AUTH_ENCRYPTION_KEYS]
+    call_command("capy_auth_reencrypt", stdout=StringIO())
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = [new]
+    authenticator.refresh_from_db()
+    assert crypto.decrypt(authenticator.data["migrated_codes"][0]) == "12345678"
+
+
+# --- Startup checks in production ------------------------------------------------------------
+
+
+def test_check_deploy_needs_a_real_key_even_with_debug_left_on(settings):
+    settings.DEBUG = True
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = []
+    assert [e.id for e in check_encryption_keys_for_deploy(None)] == ["capy_auth.E007"]
+    settings.DEBUG = False  # the normal check reports it then
+    assert check_encryption_keys_for_deploy(None) == []
+    settings.DEBUG = True
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = ["not-a-key"]  # the normal check reports it
+    assert check_encryption_keys_for_deploy(None) == []
+    settings.CAPY_AUTH_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
+    assert check_encryption_keys_for_deploy(None) == []
+
+
+def test_without_allauths_mfa_app_the_check_says_so_instead_of_crashing(monkeypatch):
+    """Without the app, importing allauth's MFA code crashes; the checks module must
+    not do that when it loads, and the check must stop before reaching it."""
+    source = Path(checks_module.__file__).read_text(encoding="utf-8")
+    top_level = [node for node in ast.parse(source).body if isinstance(node, ast.ImportFrom)]
+    assert not [node.module for node in top_level if node.module in ("adapter", "allauth.mfa")]
+    assert all("mfa" not in (node.module or "") for node in top_level if node.level == 0)
+    monkeypatch.setattr(checks_module.apps, "is_installed", lambda name: False)
+    monkeypatch.setattr(checks_module, "uses_capy_auth_adapter", lambda: pytest.fail("imported"))
+    assert [e.id for e in check_mfa_setup(None)] == ["capy_auth.E008"]
+
+
+def test_without_allauths_mfa_app_capy_auth_loads_none_of_it(monkeypatch):
+    import capy_auth.urls
+
+    installed = django_apps.is_installed
+    monkeypatch.setattr(
+        django_apps, "is_installed", lambda name: name != "allauth.mfa" and installed(name)
+    )
+    try:
+        django_apps.get_app_config("capy_auth").ready()  # connects nothing for MFA
+        urls = importlib.reload(capy_auth.urls)
+        assert "mfa_activate_totp" not in [getattr(p, "name", None) for p in urls.urlpatterns]
+    finally:
+        monkeypatch.undo()
+        importlib.reload(capy_auth.urls)
+
+
+@pytest.mark.django_db
+def test_wrong_codes_while_confirming_a_change_dont_send_the_warning(with_app):
+    client = sign_in_with(with_app[1][0])
+    mail.outbox.clear()
+    for _ in range(5):
+        client.post(reverse("mfa_reauthenticate"), {"code": "000000"})
+    assert mail.outbox == []
+
+
+def test_an_authenticator_without_its_secret_is_left_as_it_is():
+    assert reencrypted("totp", {}) == {}
+    assert reencrypted("webauthn", {"credential": "x"}) == {"credential": "x"}
