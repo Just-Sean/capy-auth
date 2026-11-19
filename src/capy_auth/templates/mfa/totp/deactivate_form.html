@@ -1,7 +1,8 @@
 {% extends "mfa/totp/base.html" %}
 {% comment %}
   capy-auth's version of allauth 65.22.1's mfa/totp/deactivate_form.html, rewritten
-  rather than copied: it says what turning it off removes (the recovery codes too) and
+  rather than copied: it says what turning it off removes (the recovery codes too, when
+  no passkey or security key remains) and
   what signing in is like afterwards, and offers a way to keep it on. It keeps
   allauth's form. Check allauth's original when upgrading allauth (a test fails when
   it changes).
@@ -9,15 +10,15 @@
 {% load i18n %}
 {% load allauth %}
 {% block head_title %}
-    {% translate "Turn off two-step sign-in" %}
+    {% translate "Turn off your authenticator app" %}
 {% endblock head_title %}
 {% block content %}
     <div class="flex flex-col gap-4">
         {% element h1 %}
-            {% translate "Turn off two-step sign-in" %}
+            {% translate "Turn off your authenticator app" %}
         {% endelement %}
         {% element p %}
-            {% translate "Signing in will stop asking for codes from your authenticator app, and your recovery codes will be deleted. Signing in will then need only your password, so anyone who learns it could get in." %}
+            {% translate "Signing in will stop asking for codes from your authenticator app. If you have no passkey or security key, your recovery codes are deleted too, and signing in will need only your password, so anyone who learns it could get in." %}
         {% endelement %}
         {% url 'mfa_deactivate_totp' as action_url %}
         {% element form form=form method="post" action=action_url no_visible_fields=True %}

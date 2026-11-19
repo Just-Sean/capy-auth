@@ -74,13 +74,21 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   (`manage.py capy_auth_reencrypt`) and emails an owner after repeated wrong codes
   (`receivers.py`, on allauth's signals); a secret no key can read raises an error the
   middleware (`limits/middleware.py`) turns into a clear page. `checks.py` holds E007,
-  E008 and W005. Six MFA pages are rewritten from allauth's in capy-auth's words
-  (`templates/mfa/`): the overview, setting up (the QR code on white, a key you can
-  copy), the code step (which code to enter), turning it off (what it removes),
-  recovery codes (what they're for, where to keep them, download or copy) and making
-  new ones, each with a way back; so are their confirmation messages. The rest stay
-  allauth's, inside the layout: confirming it's you with a code, and the security-key
-  pages, which capy-auth doesn't turn on. Changes ask for the password again.
+  E008, E009, W005 and W006. `forms.py` has capy-auth's forms for adding and renaming a
+  passkey (plain words, "sign in without my password" ticked, names up to 100
+  characters), which `MFA_FORMS` points at. The MFA pages are rewritten from allauth's in capy-auth's words
+  (`templates/mfa/`): the overview, setting up an authenticator app (the QR code on
+  white, a key you can copy), the code step (which code to enter), turning it off (what
+  it removes), recovery codes (what they're for, where to keep them, download or copy)
+  and making new ones, and the passkey pages (the list as cards, adding one, renaming,
+  removing, confirming with one), each with a way back; so are their confirmation
+  messages. Confirming it's you with a code stays allauth's, inside the layout.
+  Passkeys are allauth's WebAuthn support (fido2); its scripts are static files, so
+  they work under the strict policy. capy-auth adds one small static script of its own
+  (`static/capy_auth/js/passkeys.js`): allauth only writes a failed passkey attempt to
+  the browser's console, so this shows a message next to the button, hides passkey
+  buttons on browsers that can't use them, and stops a second press while one attempt
+  runs. Changes ask you to confirm it's you again (password or passkey).
 - **Sessions** (`sessions/`, `templates/usersessions/`):
   - **Asking again:** allauth asks for the password again, on its "Confirm it's you"
     page (rewritten by capy-auth), before sensitive changes: adding, removing or
@@ -176,8 +184,14 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   wording), `account/password_reset_from_key.html` and `_done.html` ("Choose a
   password", then a "Sign in" button), `usersessions/usersession_list.html` (see
   Sessions), `account/reauthenticate.html` and `base_reauthenticate.html` ("Confirm
-  it's you", why it asks, a way back), and the six two-step sign-in pages in `mfa/`
-  (see MFA); a test fails when allauth's original of any of them changes.
+  it's you", why it asks, a way back), and the two-step sign-in pages in `mfa/` (see
+  MFA). `account/login.html` is allauth's copied with capy-auth's passkey parts
+  (`templates/capy_auth/passkeys/`): the hidden form the passkey button submits is in
+  the page's content, not with the scripts in the head; the button does nothing without
+  JavaScript (a notice says so); and a status line says when an attempt fails.
+  allauth's own passkey snippets are left alone, so a project's own sign-in page that
+  includes them still works. A test fails when allauth's original of any of these
+  changes.
   `account/account_inactive.html` replaces allauth's inactive-account page with an
   "Account suspended" page inside the layout (written for capy-auth, not copied).
 - **The stand-in project** (`tests/settings.py`, `tests/urls.py`) is the smallest
@@ -384,14 +398,32 @@ In a project made from capy-project, with its database running
      ALLAUTH_TRUSTED_PROXY_COUNT = 1 if env.bool("DJANGO_BEHIND_PROXY", default=False) else 0
      ```
 
-   - **Two-step sign-in (MFA):** authenticator apps and recovery codes, optional for
-     people. capy-auth's MFA adapter encrypts every secret before allauth stores it;
-     without the adapter or allauth's MFA app, Django's checks stop the site
-     (`capy_auth.E008`):
+   - **Two-step sign-in (MFA):** authenticator apps, passkeys or security keys, and
+     recovery codes, all optional for people. capy-auth's MFA adapter encrypts every
+     secret before allauth stores it; without the adapter or allauth's MFA app, Django's
+     checks stop the site (`capy_auth.E008`). `DEBUG` comes from `core.py` in a project
+     made from capy-project, so import it at the top of `users.py`:
 
      ```python
+     from .core import DEBUG  # at the top of users.py, with the other imports
+
      MFA_ADAPTER = "capy_auth.mfa.adapter.MFAAdapter"
-     MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+     # capy-auth's forms for adding and renaming a passkey: plain words, "sign in
+     # without my password" ticked, names up to 100 characters. Without them the site
+     # works with allauth's wording, and Django's checks warn (capy_auth.W006).
+     MFA_FORMS = {
+         "add_webauthn": "capy_auth.mfa.forms.AddPasskeyForm",
+         "edit_webauthn": "capy_auth.mfa.forms.EditPasskeyForm",
+     }
+     # Authenticator apps, recovery codes, and passkeys or security keys (WebAuthn).
+     MFA_SUPPORTED_TYPES = ["totp", "recovery_codes", "webauthn"]
+     # "Sign in with a passkey" on the sign-in page. Signing up with only a passkey
+     # stays off (allauth's MFA_PASSKEY_SIGNUP_ENABLED, False by default).
+     MFA_PASSKEY_LOGIN_ENABLED = True
+     # Passkeys over plain http, for development only: in production it would stop
+     # allauth checking which site a passkey sign-in came from, so Django's checks
+     # stop the site if it's on there (capy_auth.E009).
+     MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = DEBUG
      # A code from the previous 30 seconds still works (a code read at second 29 and
      # typed at second 31; the standard, RFC 6238, recommends it). A used code never
      # works twice.
@@ -400,6 +432,32 @@ In a project made from capy-project, with its database running
      # value; the first key encrypts, every key decrypts.
      CAPY_AUTH_ENCRYPTION_KEYS = env.list("CAPY_AUTH_ENCRYPTION_KEYS", default=[])
      ```
+
+     **Passkeys** are tied to the site's domain (the address people sign in at): moving
+     the site to another domain (including switching between `www.` and the bare
+     domain, or from a staging address) means everyone adds their passkeys again. So
+     pick one address and redirect the others to it, host nothing untrusted on its
+     subdomains (their pages could ask for the site's passkeys), and have the proxy pass
+     the real `Host` header (capy-project's Caddy does). They need https in production
+     (Caddy provides it); in development, `http://localhost` works with the setting
+     above. E009 is a startup check: it runs with `manage.py check` and `migrate`, not
+     when gunicorn starts, so keep running one of those when you deploy (capy-project's
+     deploy runs `migrate`).
+
+     **Every passkey or security key can sign in on its own** (without the password)
+     when the device allows it. allauth doesn't store whether "sign in without my
+     password" was ticked, and phones and computers often save a key as a passkey
+     anyway, so capy-auth's pages don't promise otherwise; the box is ticked by
+     default and only matters for an older security key with no PIN or fingerprint,
+     which then works only after the password. Signing in with only a key always needs
+     its fingerprint, face or PIN. Two more choices, made on purpose:
+     - **Passkey sign-ins aren't counted by django-axes** (it counts wrong passwords,
+       and its lockout doesn't block a passkey). A passkey can't be guessed, each
+       attempt answers a one-time challenge, and allauth limits passkey sign-in
+       attempts itself (10 a minute from one address).
+     - **A copied security key isn't detected.** Keys report a counter that a copy
+       could reveal by going backwards; allauth doesn't store it, and synced passkeys
+       (phones, password managers) always report 0, so capy-auth doesn't check it.
 
      Recovery codes can be seen and downloaded again later, after the password is
      typed again (as GitHub and Google do). After 5 wrong codes in an hour at the code
@@ -658,7 +716,16 @@ In a project made from capy-project, with its database running
    out everywhere else" and reload the second browser: it's signed out. Open "Two-step
    sign-in", set up an authenticator app with its QR code, save the recovery codes,
    then sign out and in: it asks for a code (the app's, or a recovery code, which works
-   only once). Turning two-step sign-in on or off first asks for your password.
+   only once). Setting up or turning off the authenticator app first asks you to confirm
+   it's you. In Chrome and in Firefox, add a passkey from "Two-step sign-in", sign out,
+   and choose "Sign in with a passkey": it signs you in, with no Content-Security-Policy
+   errors in the browser's console. Then cancel the browser's passkey prompt: a message
+   appears under the button. You need somewhere to keep the passkey: your phone (scan
+   the QR code the browser shows), a security key, or the browser's own passkey
+   storage. In Chrome you can also use DevTools > More tools > WebAuthn > "Enable
+   virtual authenticator environment"; Firefox on Linux needs a phone or a security
+   key. Use `http://localhost:8000` throughout, not `127.0.0.1`: a passkey only works
+   at the address it was added on.
    `runserver` prints `capy_auth.W005` until `CAPY_AUTH_ENCRYPTION_KEYS` is set, and
    the capy-auth settings page shows "MFA secrets encryption". To see that only
    encrypted text is stored (it starts with `gAAAA`, never the key the app showed):
@@ -726,7 +793,10 @@ What happens:
   has been suspended" email. Removing the password signs it out everywhere: Django
   checks every session against a fingerprint of the account's password, so all its
   sessions stop working, on every device and in any session store, even ones nothing
-  recorded, and lifting the ban later signs nobody back in. Signing in then fails as
+  recorded, and lifting the ban later signs nobody back in. Its two-step sign-in
+  (authenticator app, passkeys, security keys, recovery codes) is removed too, so a
+  passkey can't sign it straight back in when the ban is lifted, even one someone else
+  added; the "restored" email asks the person to set it up again. Signing in then fails as
   for a wrong password (the email told them why). The ban page lists the accounts it
   suspended. Editing a ban later (its reason) changes no account; its address can't
   be changed (lift the ban and add a new one). You can't ban one of your own
@@ -950,7 +1020,9 @@ Rules for the module's code. The project trusts whatever the module does, so:
   redirects).
 - **Logins:** never check passwords or tokens yourself; use
   `django.contrib.auth.authenticate(request, ...)`, so the project's login rate
-  limiting (django-axes) counts every attempt.
+  limiting (django-axes) counts every attempt. The one exception is allauth's passkey
+  sign-in, which has its own limit (see "Every passkey or security key can sign in on
+  its own").
 - **Output:** keep auto-escaping; never `|safe` or `mark_safe` on anything a user
   typed. Auto-escaping only makes text safe inside HTML, not inside CSS, JavaScript or
   a URL, so:
@@ -1334,10 +1406,12 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
 | `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`, which also shows whether the MFA key is set) and Django's checks for the project's setup (`checks.py`: errors E001–E003, warnings W001 for weakened security settings, W002 for a cache the worker can't share, W003 for a missing breached-password check) |
 | `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), and allauth's pages |
-| `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), re-encrypting and the wrong-code warning (`services.py`, `receivers.py`), and the startup checks E007, E008 and W005 (`checks.py`) |
+| `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), re-encrypting and the wrong-code warning (`services.py`, `receivers.py`), the passkey forms (`forms.py`), and the startup checks E007, E008, E009, W005 and W006 (`checks.py`) |
 | `src/capy_auth/management/commands/capy_auth_reencrypt.py` | `manage.py capy_auth_reencrypt`: re-encrypts every MFA secret with the first key |
-| `src/capy_auth/templates/mfa/` | The two-step sign-in pages (rewritten from allauth's): the overview, setting up and turning off an authenticator app, the sign-in code step, recovery codes, and their confirmation messages |
+| `src/capy_auth/templates/mfa/` | The two-step sign-in pages (rewritten from allauth's): the overview, setting up and turning off an authenticator app, the sign-in code step, recovery codes, passkeys and security keys (`webauthn/`), and their confirmation messages |
 | `src/capy_auth/templates/capy_auth/mfa_unavailable.html` | The page shown when a stored MFA secret can't be decrypted |
+| `src/capy_auth/templates/capy_auth/passkeys/` | The passkey parts of capy-auth's pages: the sign-in page's form and scripts, the second step's passkey form, allauth's scripts plus capy-auth's, and the status line with the no-JavaScript notice |
+| `src/capy_auth/static/capy_auth/js/passkeys.js` | Shows a message when a passkey attempt fails, hides passkey buttons on browsers without passkeys, and stops a second press while one runs |
 | `src/capy_auth/sessions/` | Recording every sign-in (`recording.py`), the "Signed-in devices" page's view (`views.py`), and the startup checks E006 and W004 (`checks.py`) |
 | `src/capy_auth/templates/usersessions/` | The "Signed-in devices" page at `accounts/sessions/` and its message (rewritten from allauth's; compare with allauth's when upgrading it, as for `account/`) |
 | `src/capy_auth/templates/capy_auth/account.html` | The "Your account" page |
@@ -1346,7 +1420,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/emails/` | Emails sent by the background worker: the finished email waits in the cache (`sending.py`), the job sends it and retries (`tasks.py`) |
 | `src/capy_auth/templates/allauth/layouts/base.html` | Puts every allauth page inside the project's `layout.html` |
 | `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
-| `src/capy_auth/templates/account/` | allauth pages capy-auth replaces: `email_change.html` and `phone_change.html`, copied with their inline style removed (compare with allauth's when upgrading it; likewise `send_mail` in `account/adapter.py`, copied from allauth's); `email.html` and `password_reset_from_key*.html`, rewritten (see Pages); and the suspended page (below) |
+| `src/capy_auth/templates/account/` | allauth pages capy-auth replaces: `email_change.html` and `phone_change.html`, copied with their inline style removed (compare with allauth's when upgrading it; likewise `send_mail` in `account/adapter.py`, copied from allauth's); `email.html`, `password_reset_from_key*.html` and `reauthenticate.html`, rewritten (see Pages); `login.html`, copied with capy-auth's passkey parts; and the suspended page (below) |
 | `src/capy_auth/templates/capy_auth/fields/widget.html` | daisyUI's class for each kind of form input |
 | `src/capy_auth/limits/` | django-axes counting by the account's main email (`axes.py`), the "temporarily unavailable" page while the cache is down (`middleware.py`, `templates/capy_auth/unavailable.html`), the email check E004 (`checks.py`) |
 | `src/capy_auth/bans/` | The ban list: its tables (`models.py`), admin pages (`admin.py`), reading it (`selectors.py`), suspending, reactivating and recording attempts (`services.py`), the signup check (`forms.py`), the add-email record and "never confirmed" safeguard (`receivers.py`) and the startup check E005 (`checks.py`) |
@@ -1377,6 +1451,10 @@ If the repository itself moved, also point git at it:
 | `tests/test_sessions_edges.py` | Edge cases: every action that asks again, the 5-minute edge, sessions from the admin's login and from before the install, password changes, other users, hostile or long browser descriptions, IPv6 |
 | `tests/test_mfa.py` | Checks setting up an authenticator app, signing in with its code, recovery codes, encrypted storage, changing keys and re-encrypting, the wrong-code warning, each MFA page's hints, wording and way back, the checks and the settings page's status line |
 | `tests/test_mfa_edges.py` | Edge cases: codes at time-step edges, spaces, reuse, the wrong-code limit, recovery codes made again and downloaded, a lost or malformed key, bans and password resets |
+| `tests/test_passkeys.py` | Checks adding a passkey or security key, signing in with it on its own and as the second step (refusing forged answers and other sites), confirming a change with it, renaming and removing it, E009 and W006 |
+| `tests/test_passkey_pages.py` | Checks the passkey pages' wording, the second step worded for the person's ways of signing in, and that every passkey page has what its scripts need |
+| `tests/test_passkeys_edges.py` | Tries to break passkeys: bans, unconfirmed emails, replayed answers, another person's key, keys without a PIN, rate limits, the cache going down, sessions, names |
+| `tests/webauthn.py` | A software passkey (fido2 and cryptography), so the tests prove a real passkey works with the server |
 | `tests/totp.py` | Authenticator-app codes worked out as the apps do (RFC 6238), so the tests prove a real app works |
 | `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends, removes the password (signing every session out, recorded or not, in any store) and emails; lifting reactivates and emails a link to choose a new password; the admin permissions; the check E005 |
 | `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |

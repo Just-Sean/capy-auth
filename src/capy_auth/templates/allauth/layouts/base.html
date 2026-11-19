@@ -5,7 +5,7 @@
   head and content blocks. allauth's scripts (extra_body) go in the head: they're files
   from the site plus JSON data blocks, and they wait for the page to load before running.
   The head may hold only head elements (tests/test_pages.py checks it); allauth's passkey
-  login puts a form there, so the passkey feature has to move it.
+  login's form is moved to the page's content (account/login.html).
   allauth's own menu and messages list are left out: the layout shows messages, and
   a later capy-auth feature adds a menu with the links.
 {% endcomment %}

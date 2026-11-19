@@ -49,3 +49,12 @@ def in_fours(text):
     """A long key in groups of 4 ("MGD5 S22E …"), easier to read and type; apps and
     allauth ignore the spaces."""
     return " ".join(text[i : i + 4] for i in range(0, len(text), 4))
+
+
+@register.filter
+def authenticator_types(user):
+    """The kinds of two-step sign-in this person has set up ("totp", "webauthn",
+    "recovery_codes"), so the second-step page can offer theirs first."""
+    from allauth.mfa.models import Authenticator  # only used on allauth's MFA pages
+
+    return set(Authenticator.objects.filter(user_id=user.pk).values_list("type", flat=True))

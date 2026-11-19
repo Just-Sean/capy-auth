@@ -26,6 +26,8 @@ class CapyAuthConfig(AppConfig):
             check_encryption_keys,
             check_encryption_keys_for_deploy,
             check_mfa_setup,
+            check_passkey_forms,
+            check_passkey_origin,
         )
         from capy_auth.sessions.checks import check_session_store, check_user_sessions
 
@@ -41,6 +43,8 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_mfa_setup)
         checks.register(check_encryption_keys)
         checks.register(check_encryption_keys_for_deploy, deploy=True)
+        checks.register(check_passkey_origin)
+        checks.register(check_passkey_forms)
         ban_receivers.connect_receivers()
         account_receivers.connect_receivers()
         if apps.is_installed("allauth.usersessions"):  # E006 reports it missing

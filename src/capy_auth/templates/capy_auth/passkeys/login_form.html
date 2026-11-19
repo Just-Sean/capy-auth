@@ -1,0 +1,10 @@
+{% comment %}
+  The hidden form allauth's passkey sign-in submits (from allauth 65.22.1's
+  mfa/webauthn/snippets/login_script.html), placed in the page's content by
+  capy-auth's account/login.html.
+{% endcomment %}
+<form id="mfa_login" action="{% url 'mfa_login_webauthn' %}" method="post">
+    {% csrf_token %}
+    {{ redirect_field }}
+    <input type="hidden" name="credential" id="mfa_credential">
+</form>
