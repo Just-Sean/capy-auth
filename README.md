@@ -74,9 +74,11 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   (`manage.py capy_auth_reencrypt`) and emails an owner after repeated wrong codes
   (`receivers.py`, on allauth's signals); a secret no key can read raises an error the
   middleware (`limits/middleware.py`) turns into a clear page. `checks.py` holds E007,
-  E008 and W005. The setup page and the code page are rewritten from allauth's (the QR
-  code on white, a key you can copy, which code to enter); the other MFA pages are
-  allauth's, inside the layout. Changes ask for the password again.
+  E008 and W005. Every MFA page is rewritten from allauth's in capy-auth's words
+  (`templates/mfa/`): the overview, setting up (the QR code on white, a key you can
+  copy), the code step (which code to enter), turning it off (what it removes),
+  recovery codes (what they're for, download) and making new ones, each with a way
+  back. Changes ask for the password again.
 - **Sessions** (`sessions/`, `templates/usersessions/`):
   - **Asking again:** allauth asks for the password again, on its "Confirm it's you"
     page (rewritten by capy-auth), before sensitive changes: adding, removing or
@@ -166,14 +168,14 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   `account/email_change.html` and `account/phone_change.html`, are copied with their
   inline style (which the Content Security Policy blocks) replaced by the `hidden`
   attribute; a test fails if allauth's originals change, and another if allauth gives
-  an element something the override doesn't show. Six more are rewritten rather
-  than copied: `account/email.html` (addresses wrap on narrow screens, the choices are
+  an element something the override doesn't show. More are rewritten rather than
+  copied: `account/email.html` (addresses wrap on narrow screens, the choices are
   grouped under a legend, the buttons say they act on the chosen address, capy-auth's
   wording), `account/password_reset_from_key.html` and `_done.html` ("Choose a
-  password", then a "Sign in" button), and `usersessions/usersession_list.html` (see
-  Sessions), and `account/reauthenticate.html` and `base_reauthenticate.html` ("Confirm
-  it's you", why it asks, a way back); a test fails when allauth's original of any of
-  them changes.
+  password", then a "Sign in" button), `usersessions/usersession_list.html` (see
+  Sessions), `account/reauthenticate.html` and `base_reauthenticate.html` ("Confirm
+  it's you", why it asks, a way back), and the six two-step sign-in pages in `mfa/`
+  (see MFA); a test fails when allauth's original of any of them changes.
   `account/account_inactive.html` replaces allauth's inactive-account page with an
   "Account suspended" page inside the layout (written for capy-auth, not copied).
 - **The stand-in project** (`tests/settings.py`, `tests/urls.py`) is the smallest
@@ -1332,7 +1334,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), and allauth's pages |
 | `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), re-encrypting and the wrong-code warning (`services.py`, `receivers.py`), and the startup checks E007, E008 and W005 (`checks.py`) |
 | `src/capy_auth/management/commands/capy_auth_reencrypt.py` | `manage.py capy_auth_reencrypt`: re-encrypts every MFA secret with the first key |
-| `src/capy_auth/templates/mfa/` | The authenticator-app setup page and the sign-in code page (rewritten from allauth's) |
+| `src/capy_auth/templates/mfa/` | The two-step sign-in pages (rewritten from allauth's): the overview, setting up and turning off an authenticator app, the sign-in code step, and recovery codes |
 | `src/capy_auth/templates/capy_auth/mfa_unavailable.html` | The page shown when a stored MFA secret can't be decrypted |
 | `src/capy_auth/sessions/` | Recording every sign-in (`recording.py`), the "Signed-in devices" page's view (`views.py`), and the startup checks E006 and W004 (`checks.py`) |
 | `src/capy_auth/templates/usersessions/` | The "Signed-in devices" page at `accounts/sessions/` and its message (rewritten from allauth's; compare with allauth's when upgrading it, as for `account/`) |

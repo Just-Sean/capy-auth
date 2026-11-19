@@ -466,3 +466,54 @@ def test_wrong_codes_while_confirming_a_change_dont_send_the_warning(with_app):
 def test_an_authenticator_without_its_secret_is_left_as_it_is():
     assert reencrypted("totp", {}) == {}
     assert reencrypted("webauthn", {"credential": "x"}) == {"credential": "x"}
+
+
+# --- The pages in capy-auth's words -------------------------------------------------------
+
+
+def signed_in_with_app(with_app):
+    client = sign_in_with(with_app[1][0])
+    client.post(REAUTHENTICATE, {"password": PASSWORD})
+    return client
+
+
+@pytest.mark.django_db
+def test_the_overview_says_whats_on_and_offers_a_way_back(client, ada):
+    log_in(client)
+    page = check_page(client.get(MFA_PAGE))
+    assert "<title>" in page and "Two-step sign-in" in page
+    assert "Off: set up an app" in page
+    assert f'href="{ACTIVATE}"' in page
+    assert f'href="{ACCOUNT_PAGE}"' in page
+
+
+@pytest.mark.django_db
+def test_with_an_app_the_overview_offers_turning_off_and_the_codes(with_app):
+    page = check_page(signed_in_with_app(with_app).get(MFA_PAGE))
+    assert "On: signing in asks for the code" in page
+    assert "9 of 10 codes left" in page
+    for name in ("mfa_deactivate_totp", "mfa_view_recovery_codes", "mfa_download_recovery_codes"):
+        assert f'href="{reverse(name)}"' in page
+    assert "Make new codes" in page
+
+
+@pytest.mark.django_db
+def test_turning_off_says_what_it_removes_and_offers_keeping_it(with_app):
+    page = check_page(signed_in_with_app(with_app).get(DEACTIVATE))
+    assert "removes your authenticator app and your recovery codes" in page
+    assert f'href="{MFA_PAGE}"' in page and "Keep it on" in page
+
+
+@pytest.mark.django_db
+def test_the_codes_page_says_what_theyre_for_and_how_to_leave(with_app):
+    page = check_page(signed_in_with_app(with_app).get(RECOVERY_CODES))
+    assert "Each works once. Keep them somewhere safe" in page
+    assert f'href="{reverse("mfa_download_recovery_codes")}"' in page
+    assert f'href="{MFA_PAGE}"' in page and ">Done<" in page
+
+
+@pytest.mark.django_db
+def test_making_new_codes_warns_about_the_old_ones_and_offers_a_way_back(with_app):
+    page = check_page(signed_in_with_app(with_app).get(reverse("mfa_generate_recovery_codes")))
+    assert "your old codes will stop working" in page
+    assert f'href="{MFA_PAGE}"' in page

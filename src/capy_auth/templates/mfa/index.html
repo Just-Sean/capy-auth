@@ -1,0 +1,132 @@
+{% extends "mfa/base_manage.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/index.html, rewritten rather than
+  copied: capy-auth's wording ("Two-step sign-in", "Turn off", "Make new codes"),
+  content spaced like capy-auth's other pages, and a way back. It keeps allauth's
+  panels and the passkey section (styled in a later feature). Check allauth's original
+  when upgrading allauth (a test fails when it changes).
+{% endcomment %}
+{% load allauth %}
+{% load i18n %}
+{% block head_title %}
+    {% translate "Two-step sign-in" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 tags="mfa,index" %}
+            {% translate "Two-step sign-in" %}
+        {% endelement %}
+        {% element p %}
+            {% translate "With two-step sign-in, signing in needs a code as well as your password, so your password alone isn’t enough to get in." %}
+        {% endelement %}
+        {% if "totp" in MFA_SUPPORTED_TYPES %}
+            {% element panel %}
+                {% slot title %}
+                    {% translate "Authenticator app" %}
+                {% endslot %}
+                {% slot body %}
+                    {% if authenticators.totp %}
+                        {% element p %}
+                            {% translate "On: signing in asks for the code from your authenticator app." %}
+                        {% endelement %}
+                    {% else %}
+                        {% element p %}
+                            {% translate "Off: set up an app such as Google Authenticator, Microsoft Authenticator or 1Password." %}
+                        {% endelement %}
+                    {% endif %}
+                {% endslot %}
+                {% slot actions %}
+                    {% url 'mfa_deactivate_totp' as deactivate_url %}
+                    {% url 'mfa_activate_totp' as activate_url %}
+                    {% if authenticators.totp %}
+                        {% element button href=deactivate_url tags="danger,delete,panel" %}
+                            {% translate "Turn off" %}
+                        {% endelement %}
+                    {% else %}
+                        {% element button href=activate_url tags="panel" %}
+                            {% translate "Set up an authenticator app" %}
+                        {% endelement %}
+                    {% endif %}
+                {% endslot %}
+            {% endelement %}
+        {% endif %}
+        {% if "webauthn" in MFA_SUPPORTED_TYPES %}
+            {% element panel %}
+                {% slot title %}
+                    {% translate "Security keys" %}
+                {% endslot %}
+                {% slot body %}
+                    {% if authenticators.webauthn|length %}
+                        {% element p %}
+                            {% blocktranslate count count=authenticators.webauthn|length %}You have added {{ count }} security key.{% plural %}You have added {{ count }} security keys.{% endblocktranslate %}
+                        {% endelement %}
+                    {% else %}
+                        {% element p %}
+                            {% translate "No security keys added yet." %}
+                        {% endelement %}
+                    {% endif %}
+                {% endslot %}
+                {% slot actions %}
+                    {% if authenticators.webauthn|length %}
+                        {% url 'mfa_list_webauthn' as webauthn_list_url %}
+                        {% element button href=webauthn_list_url %}
+                            {% translate "Manage" %}
+                        {% endelement %}
+                    {% else %}
+                        {% url 'mfa_add_webauthn' as webauthn_add_url %}
+                        {% element button href=webauthn_add_url %}
+                            {% translate "Add" %}
+                        {% endelement %}
+                    {% endif %}
+                {% endslot %}
+            {% endelement %}
+        {% endif %}
+        {% if "recovery_codes" in MFA_SUPPORTED_TYPES %}
+            {% with total_count=authenticators.recovery_codes.generate_codes|length unused_count=authenticators.recovery_codes.get_unused_codes|length %}
+                {% element panel %}
+                    {% slot title %}
+                        {% translate "Recovery codes" %}
+                    {% endslot %}
+                    {% slot body %}
+                        {% if authenticators.recovery_codes %}
+                            {% element p %}
+                                {% blocktranslate count unused_count=unused_count %}For when you can’t use your app. {{ unused_count }} of {{ total_count }} codes left; each works once.{% plural %}For when you can’t use your app. {{ unused_count }} of {{ total_count }} codes left; each works once.{% endblocktranslate %}
+                            {% endelement %}
+                        {% else %}
+                            {% element p %}
+                                {% translate "None yet: they’re made when you set up an authenticator app." %}
+                            {% endelement %}
+                        {% endif %}
+                    {% endslot %}
+                    {% if is_mfa_enabled %}
+                        {% if authenticators.recovery_codes %}
+                            {% if unused_count > 0 and not MFA_RECOVERY_CODES_SHOW_ONCE %}
+                                {% slot actions %}
+                                    {% url 'mfa_view_recovery_codes' as view_url %}
+                                    {% element button href=view_url tags="panel" %}
+                                        {% translate "See them" %}
+                                    {% endelement %}
+                                {% endslot %}
+                                {% slot actions %}
+                                    {% url 'mfa_download_recovery_codes' as download_url %}
+                                    {% element button href=download_url tags="secondary,panel" %}
+                                        {% translate "Download them" %}
+                                    {% endelement %}
+                                {% endslot %}
+                            {% endif %}
+                        {% endif %}
+                        {% slot actions %}
+                            {% url 'mfa_generate_recovery_codes' as generate_url %}
+                            {% element button href=generate_url tags="secondary,panel" %}
+                                {% translate "Make new codes" %}
+                            {% endelement %}
+                        {% endslot %}
+                    {% endif %}
+                {% endelement %}
+            {% endwith %}
+        {% endif %}
+        <p>
+            <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
+        </p>
+    </div>
+{% endblock content %}

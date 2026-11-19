@@ -1,0 +1,72 @@
+{% extends "mfa/recovery_codes/base.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/recovery_codes/index.html, rewritten
+  rather than copied: what the codes are for and where to keep them, the download
+  first, and "Done" back to the overview. It keeps allauth's codes box and script (a
+  click on the box copies the codes). Check allauth's original when upgrading allauth
+  (a test fails when it changes).
+{% endcomment %}
+{% load i18n allauth static %}
+{% block head_title %}
+    {% translate "Recovery codes" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Recovery codes" %}
+        {% endelement %}
+        {% element p %}
+            {% translate "If you can’t use your authenticator app (a lost or new phone), enter one of these codes when signing in. Each works once. Keep them somewhere safe, such as a password manager." %}
+        {% endelement %}
+        {% element p %}
+            {% blocktranslate count unused_count=unused_codes|length %}{{ unused_count }} of {{ total_count }} codes left.{% plural %}{{ unused_count }} of {{ total_count }} codes left.{% endblocktranslate %}
+        {% endelement %}
+        {% if can_view_codes %}
+            {% element field id="recovery_codes" type="textarea" rows=unused_codes|length readonly=True %}
+                {% slot label %}
+                    {% translate "Your unused codes" %}
+                {% endslot %}
+                {# djlint:off #}
+{% slot value %}{% for code in unused_codes %}{% if forloop.counter0 %}
+{% endif %}{{ code }}{% endfor %}{% endslot %}
+                {# djlint:on #}
+            {% endelement %}
+        {% endif %}
+        <div class="flex flex-wrap gap-2">
+            {% if can_download_codes %}
+                {% url 'mfa_download_recovery_codes' as download_url %}
+                {% element button href=download_url %}
+                    {% translate "Download them" %}
+                {% endelement %}
+            {% endif %}
+            {% if can_generate_codes %}
+                {% url 'mfa_generate_recovery_codes' as generate_url %}
+                {% element button href=generate_url tags="secondary" %}
+                    {% translate "Make new codes" %}
+                {% endelement %}
+            {% endif %}
+        </div>
+        {% if MFA_RECOVERY_CODES_SHOW_ONCE and can_view_codes %}
+            {% element field type="checkbox" id="codes_saved" %}
+                {% slot label %}
+                    {% translate "I’ve saved my recovery codes" %}
+                {% endslot %}
+            {% endelement %}
+        {% endif %}
+        <p>
+            <a class="link" href="{% url 'mfa_index' %}">{% translate "Done" %}</a>
+        </p>
+    </div>
+{% endblock content %}
+{% block extra_body %}
+    {{ block.super }}
+    <script src="{% static 'mfa/js/recovery_codes.js' %}"></script>
+    <script src="{% static 'account/js/onload.js' %}"></script>
+    <script data-allauth-onload="allauth.recoveryCodes.forms.viewForm" type="application/json">{
+    "ids": {
+        "saveConfirmation": "codes_saved",
+        "recoveryCodes": "recovery_codes"
+    }
+}
+    </script>
+{% endblock extra_body %}
