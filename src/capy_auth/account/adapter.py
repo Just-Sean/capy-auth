@@ -4,10 +4,13 @@ ACCOUNT_ADAPTER at it (see the README)."""
 import secrets
 
 from allauth.account.adapter import DefaultAccountAdapter
+from allauth.core import context
 from django.contrib.auth.hashers import make_password
+from django.contrib.sites.shortcuts import get_current_site
 from django.utils.translation import gettext_lazy as _
 
 from capy_auth.config.selectors import get_auth_settings
+from capy_auth.emails.tasks import queue_email
 
 
 def user_display(user):
@@ -38,3 +41,15 @@ class AccountAdapter(DefaultAccountAdapter):
         otherwise the faster answer would show the email already has an account."""
         make_password(secrets.token_urlsafe())
         super().send_account_already_exists_mail(email)
+
+    def send_mail(self, template_prefix, email, context_data):
+        """Builds the email as allauth does, then has the background worker send it
+        (capy_auth/emails/)."""
+        request = context.request
+        mail_context = {
+            "request": request,
+            "email": email,
+            "current_site": get_current_site(request),
+            **context_data,
+        }
+        queue_email(self.render_mail(template_prefix, email, mail_context))
