@@ -29,6 +29,12 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
 - **Made for capy projects:** a project made from capy-project, styled with
   capy-theme. Its pages extend the project's `layout.html` and use daisyUI 5 classes,
   so capy-theme's active theme styles them; it never imports capy-theme.
+- **Settings admins change** live in one database record (`config/`), shown in the
+  Django admin as the "capy-auth settings" page, which is capy-auth's dashboard.
+  capy-auth's account adapter (`account/adapter.py`) reads it when allauth asks how to
+  behave. Why the database, not only the project's settings: admins change these
+  while the site runs, without a deploy. Secrets and anything that must not change
+  while running stay in the project's settings.
 - **Pages** come from allauth. capy-auth overrides only allauth's page frame and its
   small building blocks, under allauth's own template names:
   `templates/allauth/layouts/base.html` puts every allauth page inside the project's
@@ -91,7 +97,13 @@ In a project made from capy-project, with its database running
    settings topic file they belong to, read from the environment, and list each new
    variable in `.env.example`. A new topic file goes in two places in
    `config/settings/__init__.py` (the `from . import …` line and the `for _topic in …`
-   list) and in `TOPICS` in `tests/test_settings_package.py`.
+   list) and in `TOPICS` in `tests/test_settings_package.py`. Also point allauth at
+   capy-auth's account adapter, which applies the dashboard's settings:
+
+   ```python
+   ACCOUNT_ADAPTER = "capy_auth.account.adapter.AccountAdapter"
+   ```
+
 5. The module's pages extend the project's `templates/layout.html` (see
    [Pages](#pages)), which shows Django's messages ("Saved.") in a `role="status"`
    region that modules rely on.
@@ -158,10 +170,19 @@ In a project made from capy-project, with its database running
 
 ## Settings
 
-None yet. Each setting a project can change is read with the
-`CAPY_AUTH_` prefix and a sensible default, and listed here with its
-default and what it does, e.g.
-`getattr(settings, "CAPY_AUTH_CACHE_SECONDS", 300)`.
+Admins change capy-auth's settings in the Django admin, on the **capy-auth settings**
+page (staff with the "Can change capy-auth settings" permission, or superusers). They're
+kept as one record in the database; the admin's history shows who changed what. The
+record is created the first time it's needed, with its starting values from the
+project's settings below; after that, what admins set wins, and changing the project's
+setting no longer has an effect.
+
+| Setting | Default | Starting value of |
+| --- | --- | --- |
+| `CAPY_AUTH_SIGNUP_OPEN` | `True` | **Signup open:** anyone can create an account. When off, the signup page says signup is closed and creates no accounts. allauth's own `ACCOUNT_SIGNUP_ENABLED = False` also closes it. |
+
+Settings that must not change while the site runs (secrets, the site's domain, the
+email server) stay in the project's settings and environment.
 
 ## Upgrading
 
@@ -706,7 +727,10 @@ If the repository itself moved, also point git at it:
 | --- | --- |
 | `src/capy_auth/` | The Django app that projects install |
 | `src/capy_auth/apps.py` | The app's name, label and admin title |
-| `src/capy_auth/models.py` | Database models (empty to start) |
+| `src/capy_auth/models.py` | Lists the module's database models for Django (each lives in its section) |
+| `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
+| `src/capy_auth/config/` | The settings record (`models.py`), reading it (`store.py`) and its admin page (`admin.py`) |
+| `src/capy_auth/account/adapter.py` | capy-auth's account adapter: allauth asks it how to behave (e.g. whether signup is open) |
 | `src/capy_auth/templates/allauth/layouts/base.html` | Puts every allauth page inside the project's `layout.html` |
 | `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
 | `src/capy_auth/templates/account/` | allauth pages copied with their inline style removed (compare with allauth's when upgrading it) |
@@ -719,6 +743,7 @@ If the repository itself moved, also point git at it:
 | `tests/email_users/` | A copy of capy-project's user model, used with `TEST_USER_MODEL=email` |
 | `tests/test_stand_in_project.py` | Checks the stand-in project gives the module what a capy project does |
 | `tests/test_pages.py` | Checks allauth's pages render inside the layout under the strict policy, with daisyUI inputs, visible labels, linked help text and errors, and that the overrides keep up with allauth |
+| `tests/test_settings_store.py` | Checks the settings record, its admin page and closing signup |
 | `tests/test_app.py` | Checks the app loads from its own package and its migrations are complete |
 | `tests/test_host_rules.py` | Checks the module adds no `check --deploy` warning to a project |
 | `tests/test_csp.py` | Checks the module's templates have nothing a strict Content Security Policy blocks |
