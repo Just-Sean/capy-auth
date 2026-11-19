@@ -1,5 +1,5 @@
-"""capy-auth's settings that admins change on the dashboard (the Django admin), kept as
-one record in the database."""
+"""capy-auth's settings that admins change on the capy-auth settings page (in the Django
+admin), kept as one record in the database."""
 
 from django.db import models
 from django.db.models import Q
@@ -8,7 +8,7 @@ from django.utils.translation import gettext_lazy as _
 
 class AuthSettings(models.Model):
     """The one record of capy-auth's settings. Read it with
-    capy_auth.config.store.get_auth_settings(), which creates it the first time with
+    capy_auth.config.selectors.get_auth_settings(), which creates it the first time with
     starting values from the project's settings."""
 
     SINGLETON_ID = 1
@@ -26,7 +26,8 @@ class AuthSettings(models.Model):
         verbose_name = _("capy-auth settings")
         verbose_name_plural = _("capy-auth settings")
         constraints = [
-            # Backstop: there's only ever one record.
+            # Backstop: there's only ever one record. 1 is SINGLETON_ID (Meta can't
+            # see the class's own attributes).
             models.CheckConstraint(condition=Q(pk=1), name="capy_auth_authsettings_one_row"),
         ]
 

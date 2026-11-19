@@ -5,10 +5,9 @@ history."""
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect
-from django.urls import reverse
 
 from .models import AuthSettings
-from .store import get_auth_settings
+from .selectors import get_auth_settings
 
 
 @admin.register(AuthSettings)
@@ -24,4 +23,4 @@ class AuthSettingsAdmin(admin.ModelAdmin):
         if not self.has_view_or_change_permission(request):
             raise PermissionDenied
         record = get_auth_settings()
-        return redirect(reverse("admin:capy_auth_authsettings_change", args=[record.pk]))
+        return redirect("admin:capy_auth_authsettings_change", record.pk)
