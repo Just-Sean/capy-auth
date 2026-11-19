@@ -1,0 +1,33 @@
+{% extends "mfa/webauthn/base.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/webauthn/edit_form.html: the same form,
+  in capy-auth's words, with a way back. Check allauth's original when upgrading
+  allauth (a test fails when it changes).
+{% endcomment %}
+{% load i18n allauth %}
+{% block head_title %}
+    {% translate "Rename a passkey or security key" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Rename a passkey or security key" %}
+        {% endelement %}
+        {% url 'mfa_edit_webauthn' as action_url %}
+        {% element form form=form method="post" action=action_url %}
+            {% slot body %}
+                {% csrf_token %}
+                {% element fields form=form %}
+                {% endelement %}
+            {% endslot %}
+            {% slot actions %}
+                {% element button id="mfa_webauthn_edit" type="submit" %}
+                    {% translate "Save" %}
+                {% endelement %}
+            {% endslot %}
+        {% endelement %}
+        <p>
+            <a class="link" href="{% url 'mfa_list_webauthn' %}">{% translate "Back to passkeys and security keys" %}</a>
+        </p>
+    </div>
+{% endblock %}

@@ -80,3 +80,22 @@ def check_encryption_keys_for_deploy(app_configs, **kwargs):
     except KeyProblem:
         return []  # check_encryption_keys already reports it
     return [] if keys else [key_error(f"{SETTING} isn't set")]
+
+
+INSECURE_ORIGIN = "MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN"
+
+
+def check_passkey_origin(app_configs, **kwargs):
+    """allauth's switch that lets passkeys work over plain http (for development) also
+    turns off its check of where a passkey sign-in came from: never in production."""
+    if settings.DEBUG or not getattr(settings, INSECURE_ORIGIN, False):
+        return []
+    return [
+        Error(
+            f"{INSECURE_ORIGIN} is on in production: allauth then doesn't check which site "
+            "a passkey sign-in came from.",
+            hint=f"Set {INSECURE_ORIGIN} = DEBUG (on only in development), as capy-auth's "
+            "README says.",
+            id="capy_auth.E009",
+        )
+    ]

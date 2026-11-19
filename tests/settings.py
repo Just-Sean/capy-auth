@@ -100,7 +100,8 @@ ALLAUTH_TRUSTED_PROXY_COUNT = 0
 # MFA, as the README tells a project: authenticator apps and recovery codes, secrets
 # encrypted by capy-auth's adapter with a key made each run (nothing to keep secret).
 MFA_ADAPTER = "capy_auth.mfa.adapter.MFAAdapter"
-MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes", "webauthn"]
+MFA_PASSKEY_LOGIN_ENABLED = True  # "Sign in with a passkey"; signing up with one stays off
 MFA_TOTP_TOLERANCE = 1  # the previous 30-second code still works (RFC 6238)
 CAPY_AUTH_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
 

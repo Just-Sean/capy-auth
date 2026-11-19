@@ -1,0 +1,15 @@
+{% comment %}
+  allauth 65.22.1's mfa/webauthn/snippets/login_script.html without its form, which
+  capy-auth's account/login.html places in the page's content
+  (mfa/webauthn/snippets/login_form.html): this part goes in the head, where only head
+  elements may go. Compare with allauth's when upgrading allauth (a test fails when it
+  changes).
+{% endcomment %}
+{% include "mfa/webauthn/snippets/scripts.html" %}
+<script data-allauth-onload="allauth.webauthn.forms.loginForm" type="application/json">{
+    "ids": {
+        "login": "passkey_login",
+        "credential": "mfa_credential"
+    }
+}
+</script>

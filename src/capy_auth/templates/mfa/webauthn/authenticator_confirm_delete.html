@@ -1,0 +1,33 @@
+{% extends "mfa/webauthn/base.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/webauthn/authenticator_confirm_delete.html:
+  the same form, naming what's removed and what signing in is like afterwards, with a
+  way to keep it. Check allauth's original when upgrading allauth (a test fails when it
+  changes).
+{% endcomment %}
+{% load i18n allauth %}
+{% block head_title %}
+    {% translate "Remove a passkey or security key" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% blocktranslate with name=authenticator %}Remove {{ name }}?{% endblocktranslate %}
+        {% endelement %}
+        {% element p %}
+            {% translate "You won’t be able to sign in with it anymore. If it’s your last way of doing two-step sign-in, your recovery codes are deleted too, and signing in will need only your password." %}
+        {% endelement %}
+        {% url 'mfa_remove_webauthn' pk=authenticator.pk as action_url %}
+        {% element form method="post" action=action_url no_visible_fields=True %}
+            {% slot actions %}
+                {% csrf_token %}
+                {% element button tags="danger" type="submit" %}
+                    {% translate "Remove it" %}
+                {% endelement %}
+            {% endslot %}
+        {% endelement %}
+        <p>
+            <a class="link" href="{% url 'mfa_list_webauthn' %}">{% translate "Keep it" %}</a>
+        </p>
+    </div>
+{% endblock %}

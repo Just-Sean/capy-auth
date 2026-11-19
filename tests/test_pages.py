@@ -386,6 +386,25 @@ REWRITTEN_PAGES = {
     "mfa/authenticate.html": (  # wrapped like the others (a sha256 of a template)
         "37e688fdef8f745254fbc6afcacebe74a288c7591743f45880bd368b886dd73e"
     ),
+    "account/login.html": "bc38debd2f3c65608dc72f102170055a9c5fadbe0db7400d35eda03fd796c339",
+    "mfa/webauthn/snippets/login_script.html": (
+        "1451b11a9b80c6c564dfba8e38a8f646a301bf40d808af0a9ef3a8a8ba790efa"
+    ),
+    "mfa/webauthn/authenticator_list.html": (
+        "e8be87b8c97b408e24d36056e720aa1f0a48e5332e335b6e0bafb69667cbc7ed"
+    ),
+    "mfa/webauthn/add_form.html": (
+        "7e774d06b5f69e3d4310c919175517f6339b7052ea7c4df367e8332628556910"
+    ),
+    "mfa/webauthn/edit_form.html": (
+        "abbddae26b24e9498818cd9888c032754913120ae2726a51509a90f0ac887ece"
+    ),
+    "mfa/webauthn/authenticator_confirm_delete.html": (
+        "54f42d04a4fd3e7c3a5efa2e728e0c9073ddfdb79acbfda3f178f8a2fa50f176"
+    ),
+    "mfa/webauthn/reauthenticate.html": (
+        "b2c9d327d8f24be435242235811bc005722f5c6aa91f87cd397aec48b581a30f"
+    ),
     "usersessions/usersession_list.html": (
         "232143c3f98d9d9fd03c97fb0516f9af0a61cf069edf123e2ed90ae5fa814808"
     ),

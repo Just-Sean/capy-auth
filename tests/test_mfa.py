@@ -502,7 +502,7 @@ def test_with_an_app_the_overview_offers_turning_off_and_the_codes(with_app):
 def test_turning_off_says_what_it_removes_and_offers_keeping_it(with_app):
     page = check_page(signed_in_with_app(with_app).get(DEACTIVATE))
     assert "stop asking for codes from your authenticator app" in page
-    assert "recovery codes will be deleted" in page
+    assert "If you have no passkey or security key, your recovery codes are deleted" in page
     assert f'href="{MFA_PAGE}"' in page and "Keep it on" in page
 
 
@@ -565,7 +565,7 @@ def test_turning_it_off_deletes_the_app_and_the_codes_and_says_so(
     with django_capture_on_commit_callbacks(execute=True):
         response = client.post(DEACTIVATE, follow=True)
     assert not Authenticator.objects.filter(user=ada).exists()
-    assert "Two-step sign-in is off" in check_page(response)
+    assert "Your authenticator app no longer gives sign-in codes" in check_page(response)
 
 
 @pytest.mark.parametrize(

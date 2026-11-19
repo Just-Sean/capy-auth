@@ -1,0 +1,48 @@
+{% extends "mfa/webauthn/base.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/webauthn/add_form.html, rewritten
+  rather than copied: what a passkey is and what the checkbox means, capy-auth's
+  wording, and a way back. It keeps allauth's form, button id and script data. Check
+  allauth's original when upgrading allauth (a test fails when it changes).
+{% endcomment %}
+{% load i18n allauth %}
+{% block head_title %}
+    {% translate "Add a passkey or security key" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Add a passkey or security key" %}
+        {% endelement %}
+        {% element p %}
+            {% translate "Your phone, computer or a security key confirms it’s you with your fingerprint, face, PIN or a tap. As a passkey it signs you in on its own; otherwise it’s a second step after your password." %}
+        {% endelement %}
+        {% url 'mfa_add_webauthn' as action_url %}
+        {% element form form=form method="post" action=action_url %}
+            {% slot body %}
+                {% csrf_token %}
+                {% element fields form=form %}
+                {% endelement %}
+            {% endslot %}
+            {% slot actions %}
+                {% element button id="mfa_webauthn_add" type="button" %}
+                    {% translate "Add it" %}
+                {% endelement %}
+            {% endslot %}
+        {% endelement %}
+        <p>
+            <a class="link" href="{% url 'mfa_index' %}">{% translate "Back to two-step sign-in" %}</a>
+        </p>
+    </div>
+    {% include "mfa/webauthn/snippets/scripts.html" %}
+    {{ js_data|json_script:"js_data" }}
+    <script data-allauth-onload="allauth.webauthn.forms.addForm" type="application/json">{
+    "ids": {
+        "add": "mfa_webauthn_add",
+        "passwordless": "{{ form.passwordless.auto_id }}",
+        "credential": "{{ form.credential.auto_id }}",
+        "data": "js_data"
+    }
+}
+    </script>
+{% endblock %}
