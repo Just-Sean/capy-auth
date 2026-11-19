@@ -370,6 +370,16 @@ REWRITTEN_PAGES = {
     "account/base_reauthenticate.html": (
         "3c03c732d9f8e91f5defe4d03e6286e34db65b0a6b0000e60a129cd34173b5fc"
     ),
+    "mfa/index.html": ("ae4ccf604a9a47463c51900bd11cec5e01a663da50929be0028aaf09b8c1f86c"),
+    "mfa/totp/deactivate_form.html": (
+        "02c44a3278e662d0d24b04fe850a9e8172a076507f84695368fa5b2f1f6543f9"
+    ),
+    "mfa/recovery_codes/index.html": (
+        "33303ef4ae6a58a2a18c6fde81dc8819a19cbd29f51f88e0a8d8100094428a04"
+    ),
+    "mfa/recovery_codes/generate.html": (
+        "76d405d12d01311c72962bff82b2105623e73d62d0f28d52842b22c49802f7f5"
+    ),
     "mfa/totp/activate_form.html": (
         "c7268f27735c65136561468cd40614ca146b194b6f20fcf4d2f0794d1a04af40"
     ),

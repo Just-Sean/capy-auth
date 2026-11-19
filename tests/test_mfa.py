@@ -17,6 +17,7 @@ from cryptography.fernet import Fernet
 from django.apps import apps as django_apps
 from django.core import mail
 from django.core.management import call_command
+from django.template.loader import render_to_string
 from django.test import Client
 from django.urls import reverse
 
@@ -466,3 +467,119 @@ def test_wrong_codes_while_confirming_a_change_dont_send_the_warning(with_app):
 def test_an_authenticator_without_its_secret_is_left_as_it_is():
     assert reencrypted("totp", {}) == {}
     assert reencrypted("webauthn", {"credential": "x"}) == {"credential": "x"}
+
+
+# --- The pages in capy-auth's words -------------------------------------------------------
+
+
+def signed_in_with_app(with_app):
+    client = sign_in_with(with_app[1][0])
+    client.post(REAUTHENTICATE, {"password": PASSWORD})
+    return client
+
+
+@pytest.mark.django_db
+def test_the_overview_says_whats_on_and_offers_a_way_back(client, ada):
+    log_in(client)
+    page = check_page(client.get(MFA_PAGE))
+    assert "<title>" in page and "Two-step sign-in" in page
+    assert "Off: set up an app" in page
+    assert f'href="{ACTIVATE}"' in page
+    assert f'href="{ACCOUNT_PAGE}"' in page
+
+
+@pytest.mark.django_db
+def test_with_an_app_the_overview_offers_turning_off_and_the_codes(with_app):
+    page = check_page(signed_in_with_app(with_app).get(MFA_PAGE))
+    assert "On: signing in asks for the code" in page
+    assert "9 of 10 codes left" in page
+    for name in ("mfa_deactivate_totp", "mfa_view_recovery_codes", "mfa_download_recovery_codes"):
+        assert f'href="{reverse(name)}"' in page
+    assert "Make new codes" in page
+
+
+@pytest.mark.django_db
+def test_turning_off_says_what_it_removes_and_offers_keeping_it(with_app):
+    page = check_page(signed_in_with_app(with_app).get(DEACTIVATE))
+    assert "stop asking for codes from your authenticator app" in page
+    assert "recovery codes will be deleted" in page
+    assert f'href="{MFA_PAGE}"' in page and "Keep it on" in page
+
+
+@pytest.mark.django_db
+def test_the_codes_page_says_what_theyre_for_and_how_to_leave(with_app):
+    page = check_page(signed_in_with_app(with_app).get(RECOVERY_CODES))
+    assert "Each works once. Keep them somewhere safe" in page
+    assert f'href="{reverse("mfa_download_recovery_codes")}"' in page
+    assert f'href="{MFA_PAGE}"' in page and ">Done<" in page
+
+
+@pytest.mark.django_db
+def test_making_new_codes_warns_about_the_old_ones_and_offers_a_way_back(with_app):
+    page = check_page(signed_in_with_app(with_app).get(reverse("mfa_generate_recovery_codes")))
+    assert "your old codes will stop working" in page
+    assert f'href="{MFA_PAGE}"' in page
+
+
+@pytest.mark.django_db
+def test_the_codes_page_makes_download_the_main_action_and_says_how_to_copy(with_app):
+    page = check_page(signed_in_with_app(with_app).get(RECOVERY_CODES))
+    download = reverse("mfa_download_recovery_codes")
+    assert f'href="{download}"\nclass="btn btn-primary"' in page.replace('" class', '"\nclass')
+    assert "btn-outline" in page  # making new codes is the quieter choice
+    assert "Click the box to copy them" in page
+    assert 'aria-describedby="recovery_codes_helptext' in page
+    assert "font-mono" in page
+
+
+@pytest.mark.django_db
+def test_with_codes_shown_once_the_pages_hide_seeing_them_again(settings, ada):
+    settings.MFA_RECOVERY_CODES_SHOW_ONCE = True
+    client = confirmed(Client())
+    set_up_app(client)
+    first = check_page(client.get(RECOVERY_CODES))
+    assert 'id="codes_saved"' in first  # "I've saved my recovery codes"
+    overview = check_page(client.get(MFA_PAGE))
+    assert f'href="{RECOVERY_CODES}"' not in overview
+    assert "Make new codes" in overview
+
+
+@pytest.mark.django_db
+def test_making_new_codes_with_none_left_is_the_main_action(settings, ada):
+    settings.MFA_RECOVERY_CODE_COUNT = 1
+    client = confirmed(Client())
+    set_up_app(client)
+    [code] = recovery_codes(client)
+    client = sign_in_with(code)  # the only code, now used
+    client.post(REAUTHENTICATE, {"password": PASSWORD})
+    page = check_page(client.get(reverse("mfa_generate_recovery_codes")))
+    assert "old codes will stop working" not in page
+    assert 'type="submit"' in page and "btn btn-primary" in page and "btn-error" not in page
+
+
+@pytest.mark.django_db
+def test_turning_it_off_deletes_the_app_and_the_codes_and_says_so(
+    with_app, ada, django_capture_on_commit_callbacks
+):
+    client = signed_in_with_app(with_app)
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(DEACTIVATE, follow=True)
+    assert not Authenticator.objects.filter(user=ada).exists()
+    assert "Two-step sign-in is off" in check_page(response)
+
+
+@pytest.mark.parametrize(
+    ("message", "show_once", "says"),
+    [
+        ("totp_activated", False, "Two-step sign-in is on"),
+        ("recovery_codes_generated", False, "New recovery codes made"),
+        ("recovery_codes_generated", True, "They won’t be shown again."),
+    ],
+)
+def test_the_confirmations_are_in_capy_auths_words(message, show_once, says):
+    """allauth adds these once the change is saved (after the request, in tests), so the
+    message templates are checked directly."""
+    text = render_to_string(
+        f"mfa/messages/{message}.txt", {"MFA_RECOVERY_CODES_SHOW_ONCE": show_once}
+    )
+    assert says in text

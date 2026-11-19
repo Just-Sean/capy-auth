@@ -1,0 +1,1 @@
+{% load i18n %}{% translate "Two-step sign-in is off: your app no longer gives sign-in codes here, and your recovery codes are deleted." %}

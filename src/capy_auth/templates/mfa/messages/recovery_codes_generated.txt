@@ -1,0 +1,1 @@
+{% load i18n %}{% translate "New recovery codes made: your old ones no longer work. Save these somewhere safe." %}{% if MFA_RECOVERY_CODES_SHOW_ONCE %} {% translate "They won’t be shown again." %}{% endif %}
