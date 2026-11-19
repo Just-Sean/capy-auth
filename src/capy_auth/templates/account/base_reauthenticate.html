@@ -16,9 +16,13 @@
         {% element h1 %}
             {% translate "Confirm it’s you" %}
         {% endelement %}
-        {% element p %}
-            {% translate "Before this change, please confirm it’s you. After that, we won’t ask again for a few minutes." %}
-        {% endelement %}
+        {% if request.capy_auth_two_step_due == "confirm" %}
+            {% include "capy_auth/staff/notice.html" %}
+        {% else %}
+            {% element p %}
+                {% translate "Before this change, please confirm it’s you. After that, we won’t ask again for a few minutes." %}
+            {% endelement %}
+        {% endif %}
         {% block reauthenticate_content %}{% endblock %}
         {% if reauthentication_alternatives %}
             {% element h2 %}
@@ -32,8 +36,11 @@
                 {% endfor %}
             {% endelement %}
         {% endif %}
-        <p>
-            <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
-        </p>
+        {% include "capy_auth/staff/way_on.html" %}
+        {% if not request.capy_auth_two_step_due %}
+            <p>
+                <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
+            </p>
+        {% endif %}
     </div>
 {% endblock content %}

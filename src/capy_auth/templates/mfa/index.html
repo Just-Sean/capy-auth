@@ -16,6 +16,7 @@
         {% element h1 tags="mfa,index" %}
             {% translate "Two-step sign-in" %}
         {% endelement %}
+        {% include "capy_auth/staff/notice.html" %}
         {% element p %}
             {% translate "With two-step sign-in, your password alone isn’t enough to get in: signing in also needs a code from an app, or a passkey or security key. Passkeys and security keys can also sign you in without your password." %}
         {% endelement %}
@@ -125,8 +126,11 @@
                 {% endelement %}
             {% endwith %}
         {% endif %}
-        <p>
-            <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
-        </p>
+        {% include "capy_auth/staff/way_on.html" %}
+        {% if not request.capy_auth_two_step_due %}
+            <p>
+                <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
+            </p>
+        {% endif %}
     </div>
 {% endblock content %}

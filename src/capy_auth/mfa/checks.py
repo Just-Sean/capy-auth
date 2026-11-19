@@ -1,12 +1,14 @@
 """Django system checks for MFA: allauth's MFA app and capy-auth's adapter must be in
-use, or secrets would be stored readable; and the encryption key must be set up, as
-whoever sets up the project is told at every step (README, development, production).
-Nothing here imports allauth's MFA code before checking the app is installed: without
-it, that import would crash before the check could say what to do."""
+use, or secrets would be stored readable; the encryption key must be set up, as
+whoever sets up the project is told at every step (README, development, production);
+and staff must sign in with two-step sign-in, through allauth's sign-in page. Nothing
+here imports allauth's MFA code before checking the app is installed: without it, that
+import would crash before the check could say what to do."""
 
 from django.apps import apps
 from django.conf import settings
 from django.core.checks import Error, Warning
+from django.urls import NoReverseMatch, resolve, reverse
 from django.utils.module_loading import import_string
 
 from .crypto import GENERATE_COMMANDS, SETTING, KeyProblem, configured_keys, keys_in_use
@@ -14,6 +16,9 @@ from .crypto import GENERATE_COMMANDS, SETTING, KeyProblem, configured_keys, key
 MFA_APP = "allauth.mfa"
 ADAPTER_PATH = "capy_auth.mfa.adapter.MFAAdapter"
 INSECURE_ORIGIN = "MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN"
+STAFF_MIDDLEWARE = "capy_auth.mfa.staff.StaffTwoStepMiddleware"
+ACCOUNT_MIDDLEWARE = "allauth.account.middleware.AccountMiddleware"
+ADMIN_LOGIN_LINE = "admin.site.login = secure_admin_login(admin.site.login)"
 KEY_HINT = (
     f"Generate a key with:\n{GENERATE_COMMANDS}\n"
     f"Put it in the environment as {SETTING} (in a project made from capy-project, in "
@@ -117,5 +122,80 @@ def check_passkey_forms(app_configs, **kwargs):
             "pages use allauth's wording and accept names of any length.",
             hint=f"Set MFA_FORMS = {FORMS!r}, as capy-auth's README says.",
             id="capy_auth.W006",
+        )
+    ]
+
+
+def check_staff_middleware(app_configs, **kwargs):
+    """Without capy-auth's middleware, staff could use the site and the admin without
+    two-step sign-in (mfa/staff.py). Before allauth's middleware it can't tell who is
+    signed in, and every page would fail."""
+    middleware = list(settings.MIDDLEWARE)
+    if STAFF_MIDDLEWARE in middleware and (
+        ACCOUNT_MIDDLEWARE not in middleware
+        or middleware.index(STAFF_MIDDLEWARE) > middleware.index(ACCOUNT_MIDDLEWARE)
+    ):
+        return []
+    return [
+        Error(
+            "Two-step sign-in isn't required for staff: capy-auth's staff middleware "
+            "isn't in MIDDLEWARE, or comes before allauth's.",
+            hint=f'Put "{STAFF_MIDDLEWARE}" in MIDDLEWARE after "{ACCOUNT_MIDDLEWARE}", '
+            "as capy-auth's README says.",
+            id="capy_auth.E010",
+        )
+    ]
+
+
+def check_staff_can_confirm(app_configs, **kwargs):
+    """Staff confirm it's them with two-step sign-in; allauth refuses that unless "mfa"
+    is one of its ways to confirm, and staff would be stuck."""
+    from allauth.account import app_settings as account_settings
+
+    if "mfa" in account_settings.REAUTHENTICATION_METHODS:
+        return []
+    return [
+        Error(
+            "Staff couldn't confirm it's them with two-step sign-in, because \"mfa\" isn't "
+            "in ACCOUNT_REAUTHENTICATION_METHODS.",
+            hint='Add "mfa" to ACCOUNT_REAUTHENTICATION_METHODS, or leave the setting '
+            "unset (allauth's default includes it).",
+            id="capy_auth.E012",
+        )
+    ]
+
+
+def served_admin_login():
+    """The view served at the admin's login address, or None without the admin's URLs."""
+    try:
+        return resolve(reverse("admin:login")).func
+    except NoReverseMatch:
+        return None
+
+
+def admin_login_uses_allauth():
+    """Looks at the page actually served: the line placed after urlpatterns changes the
+    attribute but not the page. Each call to secure_admin_login makes a new wrapper,
+    but all share one code object."""
+    from allauth.account.decorators import secure_admin_login
+
+    view = served_admin_login()
+    wrapper_code = secure_admin_login(lambda request: None).__code__
+    return view is None or getattr(view, "__code__", None) is wrapper_code
+
+
+def check_admin_login(app_configs, **kwargs):
+    """The admin's own login page skips allauth (its limits, the ban list's email, the
+    second step); allauth's secure_admin_login sends it to capy-auth's sign-in page."""
+    if not apps.is_installed("django.contrib.admin") or admin_login_uses_allauth():
+        return []
+    return [
+        Error(
+            "The admin's own login page is in use, so admin sign-ins skip capy-auth's "
+            "sign-in page.",
+            hint=f"In {settings.ROOT_URLCONF} add `from allauth.account.decorators import "
+            f"secure_admin_login` and, before urlpatterns, `{ADMIN_LOGIN_LINE}`, as "
+            "capy-auth's README says.",
+            id="capy_auth.E011",
         )
     ]

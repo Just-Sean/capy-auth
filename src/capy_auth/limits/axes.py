@@ -9,8 +9,8 @@ from django.contrib.auth import get_user_model
 
 def login_name(request, credentials):
     """The name axes counts a login under: the account's main email, in lowercase,
-    whichever of the account's addresses was typed (allauth's pages), by username (the
-    admin's own login page), or as axes' own reset after a successful login (also by
+    whichever of the account's addresses was typed (allauth's pages), by username
+    (another app's login page), or as axes' own reset after a successful login (also by
     username). So every way into one account counts together. Without an account, the
     name as typed, in lowercase."""
     credentials = credentials or {}

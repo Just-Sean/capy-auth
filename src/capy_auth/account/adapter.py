@@ -24,6 +24,11 @@ def user_display(user):
 
 
 EMAIL_NOT_CONFIRMED = _("This email address couldn’t be confirmed.")
+# Set on the request by capy_auth/mfa/staff.py (not imported here: it needs allauth's
+# MFA app, and this adapter loads without it).
+STAFF_DUE_ATTRIBUTE = "capy_auth_two_step_due"
+STAFF_MUST_CONFIRM = "confirm"
+TWO_STEP_METHOD_PREFIX = "mfa_reauthenticate"  # allauth's ids for two-step methods
 # The "Other ways to confirm it's you" links, in the words capy-auth's pages use.
 REAUTHENTICATION_LINKS = {
     "mfa_reauthenticate": _("Use your authenticator app or a recovery code"),
@@ -68,8 +73,12 @@ class AccountAdapter(DefaultAccountAdapter):
         return super().confirm_email(request, email_address)
 
     def get_reauthentication_methods(self, user):
-        """allauth's ways to confirm it's you, worded like capy-auth's pages."""
+        """allauth's ways to confirm it's you, worded like capy-auth's pages. Staff who
+        must confirm with two-step sign-in (capy_auth/mfa/staff.py, which marks the
+        request) are offered only its ways: a password or emailed code wouldn't count."""
         methods = super().get_reauthentication_methods(user)
+        if getattr(context.request, STAFF_DUE_ATTRIBUTE, None) == STAFF_MUST_CONFIRM:
+            methods = [m for m in methods if m["id"].startswith(TWO_STEP_METHOD_PREFIX)]
         for method in methods:
             method["description"] = REAUTHENTICATION_LINKS.get(method["id"], method["description"])
         return methods

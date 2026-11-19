@@ -202,7 +202,7 @@ def test_the_confirm_page_says_why_and_offers_a_way_back(client, ada):
 @pytest.mark.django_db
 def test_a_sign_in_whose_address_cant_be_read_still_works_unrecorded(ada, caplog):
     client = Client(REMOTE_ADDR="")
-    client.force_login(ada)  # Django's own login, as the admin's login page does
+    client.force_login(ada)  # Django's own login, as another app's login page does
     assert client.get(ACCOUNT_PAGE).status_code == 200
     assert not UserSession.objects.exists()
     assert "A sign-in wasn't recorded" in caplog.text

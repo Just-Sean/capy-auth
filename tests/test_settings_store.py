@@ -20,6 +20,7 @@ from capy_auth.config.checks import check_account_adapter, check_starting_values
 from capy_auth.config.models import AuthSettings
 from capy_auth.config.selectors import get_auth_settings
 from tests.helpers import check_page
+from tests.staff import two_step_client
 
 PASSWORD = secrets.token_urlsafe()
 SIGNUP = reverse("account_signup")
@@ -38,8 +39,7 @@ def superuser_client(client):
     superuser = get_user_model().objects.create_superuser(
         username="admin", email="admin@example.com", password=PASSWORD
     )
-    client.force_login(superuser)
-    return client
+    return two_step_client(superuser, client)
 
 
 def log_in_staff(client, *permissions):
@@ -48,7 +48,7 @@ def log_in_staff(client, *permissions):
         username="staff", email="staff@example.com", password=PASSWORD, is_staff=True
     )
     staff.user_permissions.add(*Permission.objects.filter(codename__in=permissions))
-    client.force_login(staff)
+    two_step_client(staff, client)
 
 
 def set_signup_open(value):

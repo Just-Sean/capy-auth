@@ -73,8 +73,12 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   break everyone's MFA too). `services.py` re-encrypts everything with the first key
   (`manage.py capy_auth_reencrypt`) and emails an owner after repeated wrong codes
   (`receivers.py`, on allauth's signals); a secret no key can read raises an error the
-  middleware (`limits/middleware.py`) turns into a clear page. `checks.py` holds E007,
-  E008, E009, W005 and W006. `forms.py` has capy-auth's forms for adding and renaming a
+  middleware (`limits/middleware.py`) turns into a clear page. `staff.py` is the
+  middleware that requires two-step sign-in for staff and superusers (allauth has no
+  switch for it): it reads allauth's record of how this session signed in (plus
+  setting it up, which capy-auth records), and what a staff member can open depends
+  on whether they have it set up yet, so a password alone never gets past it.
+  `checks.py` holds E007 to E012, W005 and W006. `forms.py` has capy-auth's forms for adding and renaming a
   passkey (plain words, "sign in without my password" ticked, names up to 100
   characters), which `MFA_FORMS` points at. The MFA pages are rewritten from allauth's in capy-auth's words
   (`templates/mfa/`): the overview, setting up an authenticator app (the QR code on
@@ -100,7 +104,7 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
     the password asks for the current one on its own form instead.
   - **Signed-in devices** (`/accounts/sessions/`): allauth's user sessions app records
     each sign-in through capy-auth's pages; `recording.py` also records Django's own
-    logins (the admin's login page) and, when someone opens the page from a session
+    logins (another app's login page) and, when someone opens the page from a session
     nobody recorded, that session, so this device is always listed and "Sign out
     everywhere else" reaches every recorded session. `views.py` is allauth's page with
     that step first; the template (rewritten from allauth's) shows cards that wrap on
@@ -136,7 +140,7 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
     the person asks for a new code or reset link.
   - Emails with attachments (allauth's have none) are sent during the request.
 - **Limits** (`limits/`): `axes.py` tells django-axes to count failed logins under the
-  account's main email, however it was typed (another of its addresses, the admin's
+  account's main email, however it was typed (another of its addresses, or its
   username), so one person's typos lock out only that account;
   `templates/capy_auth/locked_out.html` is axes' lockout page, inside the layout;
   `middleware.py` turns the cache (Redis) being down on account pages into a 503 page
@@ -233,11 +237,14 @@ In a project made from capy-project, with its database running
    `"accounts"`, and allauth's apps after `"django.contrib.messages"`. `capy_auth`
    must come before allauth's apps, so its versions of allauth's page templates are
    the ones Django uses. In `MIDDLEWARE`, add allauth's and capy-auth's right after
-   Django's messages middleware (django-axes' stays last). capy-auth's shows a
-   "temporarily unavailable" page (503) on account pages (signing in, signing up,
+   Django's messages middleware (django-axes' stays last). capy-auth's first one shows
+   a "temporarily unavailable" page (503) on account pages (signing in, signing up,
    passwords, email addresses) when one fails because the cache (Redis) is down,
    instead of a server error; nothing gets through, and the pages work again by
-   themselves once the cache is back:
+   themselves once the cache is back. Its second one requires two-step sign-in for
+   staff and superusers (see "Staff need two-step sign-in" under step 4's "Two-step
+   sign-in (MFA)"); it goes after allauth's `AccountMiddleware`, or Django's checks
+   stop the site (`capy_auth.E010`):
 
    ```python
    INSTALLED_APPS = [
@@ -257,6 +264,7 @@ In a project made from capy-project, with its database running
        "allauth.account.middleware.AccountMiddleware",
        "allauth.usersessions.middleware.UserSessionsMiddleware",
        "capy_auth.limits.middleware.CacheDownMiddleware",
+       "capy_auth.mfa.staff.StaffTwoStepMiddleware",
        ...,
    ]
    ```
@@ -276,32 +284,42 @@ In a project made from capy-project, with its database running
    ```
 
 3. In `config/urls.py` (change its import to `from django.urls import include, path`),
-   add to `urlpatterns`:
+   add to `urlpatterns`, and send the admin's login to capy-auth's sign-in page with
+   allauth's `secure_admin_login`, so staff sign in where the limits, the ban list and
+   two-step sign-in apply (without it, Django's checks stop the site,
+   `capy_auth.E011`):
 
    ```python
+   from allauth.account.decorators import secure_admin_login
+
+   admin.site.login = secure_admin_login(admin.site.login)  # before urlpatterns
+
    urlpatterns = [
        ...,
        path("accounts/", include("capy_auth.urls")),
    ]
    ```
 
+   The admin's own login page then sends visitors to capy-auth's sign-in page and
+   back to the admin afterwards. Signed-in people who aren't staff get "403
+   Forbidden" there, as Django's admin does for them.
+
    Mounted there, Django's default `LOGIN_URL` (`/accounts/login/`) and
    `LOGIN_REDIRECT_URL` (`/accounts/profile/`, capy-auth's "Your account" page) already
    point at capy-auth's pages, so leave both unset.
 
 4. In `config/settings/users.py`, where capy-project keeps its login settings:
-   - **Login backends:** put allauth's backend where Django's `ModelBackend` is, and
-     keep `ModelBackend` after it for the admin's own login page (a later capy-auth
-     feature sends that through allauth too). capy-project's two login-limit backends
-     stay first. Update the comment above the list too: `ModelBackend` is no longer
-     "the real login".
+   - **Login backends:** replace Django's `ModelBackend` with allauth's backend (which
+     also gives staff their admin permissions, as `ModelBackend` did): every sign-in,
+     the admin's included, now goes through capy-auth's sign-in page (step 3).
+     capy-project's two login-limit backends stay first. Update the comment above the
+     list too: `ModelBackend` is no longer "the real login".
 
      ```python
      AUTHENTICATION_BACKENDS = [
          "config.login_limits.IPLoginLimitBackend",
          "axes.backends.AxesStandaloneBackend",
-         "allauth.account.auth_backends.AuthenticationBackend",  # logins by email
-         "django.contrib.auth.backends.ModelBackend",  # the admin's login page
+         "allauth.account.auth_backends.AuthenticationBackend",  # every sign-in, by email
      ]
      ```
 
@@ -310,8 +328,8 @@ In a project made from capy-project, with its database running
      first one every failed email login from one address counts under one empty name,
      and 5 wrong passwords from a shared office would lock out everyone there. With
      it, axes counts each account under its main email, whichever of its addresses
-     was typed, in any capitals (the admin's username logins and axes' reset after a
-     successful login too), so 5 failures lock out that account from that address and
+     was typed, in any capitals (axes' reset after a successful login too), so 5
+     failures lock out that account from that address and
      nobody else. The second shows the lockout (status 429) as a page inside the
      layout, saying how long to wait, with a "Forgot your password?" link, instead of
      axes' bare text.
@@ -323,7 +341,7 @@ In a project made from capy-project, with its database running
 
      In the comment above `AUTHENTICATION_BACKENDS`, "username" now means the
      account's email (for example "failed logins for one account (by its email) from
-     one address"), and `ModelBackend` is the admin's login page.
+     one address").
 
      How the limits add up:
      - **django-axes** (capy-project's settings): 5 failures for one account from one
@@ -399,7 +417,8 @@ In a project made from capy-project, with its database running
      ```
 
    - **Two-step sign-in (MFA):** authenticator apps, passkeys or security keys, and
-     recovery codes, all optional for people. capy-auth's MFA adapter encrypts every
+     recovery codes: optional for most people, required for staff and superusers (see
+     "Staff need two-step sign-in" below). capy-auth's MFA adapter encrypts every
      secret before allauth stores it; without the adapter or allauth's MFA app, Django's
      checks stop the site (`capy_auth.E008`). `DEBUG` comes from `core.py` in a project
      made from capy-project, so import it at the top of `users.py`:
@@ -469,8 +488,63 @@ In a project made from capy-project, with its database running
 
      **A project that used allauth's MFA before installing capy-auth** has its
      secrets stored unencrypted; capy-auth can't read them, so those people get the
-     "can't be checked" page below until staff remove their authenticators and they
-     set up two-step sign-in again.
+     "can't be checked" page below until their authenticators are removed (see "If
+     it's lost" below: staff are among them) and they set up two-step sign-in again.
+
+     **Staff need two-step sign-in.** Staff and superusers who haven't used two-step
+     sign-in in this session (the code after the password, a passkey sign-in,
+     "Confirm it's you" with either, or setting it up) are sent from every page, the
+     admin's included:
+     - **With none set up,** to "Two-step sign-in" to set up an app or a passkey; until
+       then they can only do that (confirming it's them first, with their password or
+       an emailed code, as setting it up asks) or sign out. Afterwards a "Continue"
+       button takes them where they were going.
+     - **With it set up but not used in this session** (a session from before they
+       were made staff, or from another app's login page), to "Confirm it's you" with
+       their app, a recovery code or their passkey; until then they can only do that
+       or sign out. Their password or an emailed code doesn't count, so those aren't
+       offered, and the pages that manage two-step sign-in (recovery codes, adding or
+       turning off a method) stay closed: a password alone can't get past it.
+
+     Both pages say why they're there and offer "Sign out". There's no grace period: a
+     new superuser from `createsuperuser` sets it up at their first sign-in, and
+     someone made staff while signed in is asked at their next page. **Until a staff
+     member sets it up, their password alone can get in and set it up** (as with any
+     account that adds two-step sign-in), so set it up for a new superuser right after
+     `createsuperuser`, before the site is public. allauth's "trust this browser"
+     (`MFA_TRUST_ENABLED`, off by default) doesn't skip it for staff: a trusted
+     browser's sign-in isn't a two-step sign-in, so they confirm it anyway. Staff also
+     need `"mfa"` in allauth's `ACCOUNT_REAUTHENTICATION_METHODS` (its default; Django's
+     checks stop the site without it, `capy_auth.E012`).
+
+     **Other ways to sign in skip capy-auth's sign-in page:** allauth's backend
+     accepts a password from any Django login form (`django.contrib.auth.urls`'
+     `LoginView`, another app's login page, a second `AdminSite`, which needs the same
+     `secure_admin_login` line), and an API that signs people in with its own tokens or
+     a password on each request (Django REST framework's Token or Basic
+     authentication) never meets this middleware. Those skip capy-auth's limits, the
+     ban list's email and the second step for everyone. capy-auth's middleware still
+     asks staff for two-step sign-in on pages (not on such APIs), but keep the site's
+     only sign-in page capy-auth's: don't add another login page or a password- or
+     token-based API login.
+
+     A staff member who loses their phone or key signs in with a recovery code. If
+     they've lost those too, another superuser removes their authenticators in the
+     admin (**MFA › Authenticators**, after checking it's really them); they then sign
+     in with their password and set it up again. With no other superuser, remove them
+     on the server, with the email on their account (their main one; `(0, {})` means
+     no account matched):
+
+     ```bash
+     uv run python manage.py shell -c "from allauth.mfa.models import Authenticator; print(Authenticator.objects.filter(user__email__iexact='ada@example.com').delete())"   # development
+     docker compose -f compose.yaml -f compose.prod.yaml exec web python manage.py shell -c "from allauth.mfa.models import Authenticator; print(Authenticator.objects.filter(user__email__iexact='ada@example.com').delete())"   # production
+     ```
+
+     **Passwords are checked against breached passwords only when they're set**,
+     never at sign-in, for anyone, staff included (see "Breached passwords" below).
+     For staff that's safe enough: with two-step sign-in required, a breached password
+     alone can't get in (once they've set it up). A check at sign-in would also fail
+     closed, so an outage of the breach service would lock every admin out.
 
    - **The encryption key (whoever sets up the server does this once).** MFA secrets
      (the key each authenticator app shares with the site, and the seed of recovery
@@ -523,9 +597,15 @@ In a project made from capy-project, with its database running
      - **If it's lost**, the stored secrets can't be read. Everyone with two-step
        sign-in then gets a page at the code step saying it can't be checked right now
        and to contact the site's staff; nobody gets in without a working code, and the
-       server logs an error naming the setting. Staff let a person back in by removing
-       their authenticators in the admin (**MFA › Authenticators**, after checking it's
-       really them); they then sign in with their password and set it up again.
+       server logs an error naming the setting. Staff are locked out of the admin too
+       (they need two-step sign-in), so whoever runs the server removes every
+       authenticator there, and everyone signs in with their password and sets
+       two-step sign-in up again (staff at once, as they're asked):
+
+       ```bash
+       uv run python manage.py shell -c "from allauth.mfa.models import Authenticator; print(Authenticator.objects.all().delete())"   # development
+       docker compose -f compose.yaml -f compose.prod.yaml exec web python manage.py shell -c "from allauth.mfa.models import Authenticator; print(Authenticator.objects.all().delete())"   # production
+       ```
 
    - **Breached passwords:** add capy-auth's check to the end of capy-project's
      `AUTH_PASSWORD_VALIDATORS` (12 characters minimum, no common or all-digit
@@ -580,8 +660,8 @@ In a project made from capy-project, with its database running
      in `.env.example`) only to start differently from its default.
 
    **Existing users** (such as a superuser made with `createsuperuser`) are asked for an
-   emailed code the first time they log in through capy-auth's pages; the admin's own
-   login page doesn't ask. Migration 0004 (run by `migrate` in step 8, and by
+   emailed code the first time they log in (the admin's login goes through capy-auth's
+   pages too). Migration 0004 (run by `migrate` in step 8, and by
    production's migrate step) adds their email to allauth's list as unconfirmed.
    Resetting their password with "Forgot your password?" also confirms it. Someone who
    can't receive the code yet (a superuser on a new server before email is set up) can
@@ -705,6 +785,17 @@ In a project made from capy-project, with its database running
    uv run pytest
    ```
 
+   **capy-project's own tests of the admin's login need changing**, since the admin's
+   login now goes through capy-auth's sign-in page and staff need two-step sign-in:
+   - the login-limit tests (`tests/test_login_rate_limit.py`) post an email and
+     password (`login` and `password`) to `/accounts/login/` instead of a username to
+     the admin's login page;
+   - the security-header tests (`tests/test_security_headers.py`) fetch
+     `/accounts/login/` instead of the admin's login page;
+   - tests that use pytest-django's `admin_client` (a superuser signed in without
+     two-step sign-in, who is now sent to set it up) sign the superuser in with two-step
+     sign-in first, as capy-auth's own `tests/staff.py` does.
+
 9. Check it by hand: start the site (`uv run python manage.py runserver`), open
    http://localhost:8000/accounts/signup/, sign up, copy the code from the email printed
    in the `runserver` output, and you land on "Your account". Sign out, then sign in
@@ -733,6 +824,19 @@ In a project made from capy-project, with its database running
    ```bash
    uv run python manage.py shell -c "from allauth.mfa.models import Authenticator; print(list(Authenticator.objects.values_list('type', 'data')))"
    ```
+
+   To check staff two-step sign-in, make a superuser and confirm their email:
+
+   ```bash
+   uv run python manage.py createsuperuser
+   uv run python manage.py mark_email_verified you@example.com
+   ```
+
+   Open http://localhost:8000/admin/ (or your `DJANGO_ADMIN_URL`): it sends you to
+   capy-auth's sign-in page, then to "Two-step sign-in", which says why, until you set
+   up an app or a passkey. After saving the recovery codes, "Continue" opens the
+   admin. Sign out and in again: after the code, the admin opens straight away.
+   Signed in as someone who isn't staff, the admin says "403 Forbidden".
 
    To check the staff email, add a user in the admin, open the "An account was created
    for you" email in the `runserver` output, choose a password with its link, and sign
@@ -1406,7 +1510,8 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
 | `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`, which also shows whether the MFA key is set) and Django's checks for the project's setup (`checks.py`: errors E001–E003, warnings W001 for weakened security settings, W002 for a cache the worker can't share, W003 for a missing breached-password check) |
 | `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), and allauth's pages |
-| `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), re-encrypting and the wrong-code warning (`services.py`, `receivers.py`), the passkey forms (`forms.py`), and the startup checks E007, E008, E009, W005 and W006 (`checks.py`) |
+| `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), re-encrypting and the wrong-code warning (`services.py`, `receivers.py`), the passkey forms (`forms.py`), two-step sign-in required for staff (`staff.py`), and the startup checks E007 to E012, W005 and W006 (`checks.py`) |
+| `src/capy_auth/templates/capy_auth/staff/` | What the two-step pages show staff who must use it: why they're there (`notice.html`), and "Sign out" or "Continue" (`way_on.html`) |
 | `src/capy_auth/management/commands/capy_auth_reencrypt.py` | `manage.py capy_auth_reencrypt`: re-encrypts every MFA secret with the first key |
 | `src/capy_auth/templates/mfa/` | The two-step sign-in pages (rewritten from allauth's): the overview, setting up and turning off an authenticator app, the sign-in code step, recovery codes, passkeys and security keys (`webauthn/`), and their confirmation messages |
 | `src/capy_auth/templates/capy_auth/mfa_unavailable.html` | The page shown when a stored MFA secret can't be decrypted |
@@ -1435,7 +1540,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/templates/capy_auth/email/account_created_*.txt` | The "An account was created for you" email |
 | `src/capy_auth/migrations/` | Database migrations (see Database); 0004 adds existing users' emails to allauth's list |
 | `tests/settings.py` | A tiny stand-in project for the tests, with allauth, capy-project's Content Security Policy, django-axes as capy-project runs it, jobs run straight away (as in capy-project's development and tests) and a choice of user model (`TEST_USER_MODEL`) |
-| `tests/urls.py` | The stand-in project's URLs: capy-auth's (its own page and allauth's) under `accounts/`, and a page its own tests use |
+| `tests/urls.py` | The stand-in project's URLs: capy-auth's (its own page and allauth's) under `accounts/`, the admin with its login sent through allauth, a page in the layout, and another app's login page (Django's own login) |
 | `tests/templates/` | Copies of capy-project's `base.html` and `layout.html`, which the module's pages extend |
 | `tests/email_users/` | A copy of capy-project's user model, used with `TEST_USER_MODEL=email` |
 | `tests/test_stand_in_project.py` | Checks the stand-in project gives the module what a capy project does |
@@ -1448,12 +1553,15 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_addresses.py` | Checks the email page (add with a code, make primary, remove), the existing-users migration, `mark_email_verified` and the email for accounts staff create |
 | `tests/test_email_addresses_edges.py` | Edge cases: blank and shared addresses, the migration on real migration history, the email page's limits, the real admin "add user" page, when a reset does and doesn't confirm |
 | `tests/test_sessions.py` | Checks asking for the password again (the 5-minute window), the "Signed-in devices" page, signing out everywhere else, and E006/W004 |
-| `tests/test_sessions_edges.py` | Edge cases: every action that asks again, the 5-minute edge, sessions from the admin's login and from before the install, password changes, other users, hostile or long browser descriptions, IPv6 |
+| `tests/test_sessions_edges.py` | Edge cases: every action that asks again, the 5-minute edge, sessions from Django's own login and from before the install, password changes, other users, hostile or long browser descriptions, IPv6 |
 | `tests/test_mfa.py` | Checks setting up an authenticator app, signing in with its code, recovery codes, encrypted storage, changing keys and re-encrypting, the wrong-code warning, each MFA page's hints, wording and way back, the checks and the settings page's status line |
 | `tests/test_mfa_edges.py` | Edge cases: codes at time-step edges, spaces, reuse, the wrong-code limit, recovery codes made again and downloaded, a lost or malformed key, bans and password resets |
 | `tests/test_passkeys.py` | Checks adding a passkey or security key, signing in with it on its own and as the second step (refusing forged answers and other sites), confirming a change with it, renaming and removing it, E009 and W006 |
 | `tests/test_passkey_pages.py` | Checks the passkey pages' wording, the second step worded for the person's ways of signing in, and that every passkey page has what its scripts need |
 | `tests/test_passkeys_edges.py` | Tries to break passkeys: bans, unconfirmed emails, replayed answers, another person's key, keys without a PIN, rate limits, the cache going down, sessions, names |
+| `tests/test_staff_two_step.py` | Checks staff and superusers must use two-step sign-in (setting it up counts, then "Continue"; or confirm with it, offered only its ways; a passkey counts), what the pages say and allow meanwhile, the admin's login going to capy-auth's sign-in page, E010 to E012 |
+| `tests/test_staff_two_step_edges.py` | Tries to break it (from the QA review): a password alone reaching recovery codes or managing two-step sign-in, a project page named like a two-step page, the admin's Log out, POSTs and AJAX, people who stop being staff, another person's second step, where "next" leads |
+| `tests/staff.py` | Signs staff in with two-step sign-in, for the tests of the admin pages, and helpers for the staff tests |
 | `tests/webauthn.py` | A software passkey (fido2 and cryptography), so the tests prove a real passkey works with the server |
 | `tests/totp.py` | Authenticator-app codes worked out as the apps do (RFC 6238), so the tests prove a real app works |
 | `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends, removes the password (signing every session out, recorded or not, in any store) and emails; lifting reactivates and emails a link to choose a new password; the admin permissions; the check E005 |

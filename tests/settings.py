@@ -54,17 +54,16 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "allauth.usersessions.middleware.UserSessionsMiddleware",
     "capy_auth.limits.middleware.CacheDownMiddleware",
+    "capy_auth.mfa.staff.StaffTwoStepMiddleware",
     "axes.middleware.AxesMiddleware",  # last, as in capy-project
 ]
 
 # As the README tells a project: django-axes first (lockouts, as capy-project runs
-# them; capy-project's own per-address limit is its own code, so not here), allauth's
-# backend for logins, Django's for the admin's login until capy-auth sends it through
-# allauth.
+# them; capy-project's own per-address limit is its own code, so not here), then
+# allauth's backend for every sign-in, the admin's included (tests/urls.py).
 AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesStandaloneBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
-    "django.contrib.auth.backends.ModelBackend",
 ]
 # capy-project's django-axes settings (config/settings/users.py; its client_ip copied
 # small in tests/client_ip.py), plus capy-auth's two lines.

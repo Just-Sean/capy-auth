@@ -32,6 +32,7 @@ from tests.accounts import (
     log_in,
     reset_link,
 )
+from tests.staff import two_step_client
 
 EMAIL_PAGE = reverse("account_email")
 existing_users = importlib.import_module("capy_auth.migrations.0004_existing_users_email_addresses")
@@ -271,9 +272,7 @@ def admin_with_email_on_add(monkeypatch, db):
     superuser = get_user_model().objects.create_superuser(
         username="admin", email="admin@example.com", password=PASSWORD
     )
-    client = Client()
-    client.force_login(superuser)
-    return client
+    return two_step_client(superuser)
 
 
 def add_in_admin(client, email, username="carol", usable=True):

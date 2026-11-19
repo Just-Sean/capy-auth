@@ -24,6 +24,7 @@ from capy_auth.account.services import link_lifetime, send_account_created_email
 from capy_auth.bans.models import BannedEmail
 from tests.accounts import ACCOUNT_PAGE, PASSWORD, code_from, log_in
 from tests.helpers import check_page
+from tests.staff import two_step_client
 
 EMAIL_PAGE = reverse("account_email")
 existing_users = importlib.import_module("capy_auth.migrations.0004_existing_users_email_addresses")
@@ -291,9 +292,7 @@ def superuser_client_factory(db):
         superuser = get_user_model().objects.create_superuser(
             username="admin", email="admin@example.com", password=PASSWORD
         )
-        client = Client()
-        client.force_login(superuser)
-        return client
+        return two_step_client(superuser)
 
     return make
 

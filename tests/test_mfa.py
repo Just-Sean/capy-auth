@@ -33,6 +33,7 @@ from capy_auth.mfa.services import reencrypted
 from tests import totp
 from tests.accounts import ACCOUNT_PAGE, PASSWORD, log_in
 from tests.helpers import check_page
+from tests.staff import two_step_client
 
 MFA_PAGE = reverse("mfa_index")
 ACTIVATE = reverse("mfa_activate_totp")
@@ -252,9 +253,7 @@ def superuser_client(db):
     superuser = get_user_model().objects.create_superuser(
         username="admin", email="admin@example.com", password=PASSWORD
     )
-    client = Client()
-    client.force_login(superuser)
-    return client
+    return two_step_client(superuser)
 
 
 @pytest.mark.django_db
