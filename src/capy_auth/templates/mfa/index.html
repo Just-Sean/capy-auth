@@ -1,9 +1,11 @@
 {% extends "mfa/base_manage.html" %}
 {% comment %}
   capy-auth's version of allauth 65.22.1's mfa/index.html, rewritten rather than
-  copied: capy-auth's wording ("Two-step sign-in", "Turn off", "Make new codes"),
-  content spaced like capy-auth's other pages, and a way back. It keeps allauth's
-  panels and the passkey section (styled in a later feature). Check allauth's original
+  copied: capy-auth's wording ("Two-step sign-in", "Turn off the app", "Make new
+  codes"), content spaced like capy-auth's other pages, and a way back. It keeps
+  allauth's panels, including the security-key (WebAuthn) panel, which shows only when
+  a project adds "webauthn" to MFA_SUPPORTED_TYPES (capy-auth's passkeys feature
+  restyles it). Check allauth's original
   when upgrading allauth (a test fails when it changes).
 {% endcomment %}
 {% load allauth %}
@@ -17,7 +19,7 @@
             {% translate "Two-step sign-in" %}
         {% endelement %}
         {% element p %}
-            {% translate "With two-step sign-in, signing in needs a code as well as your password, so your password alone isn’t enough to get in." %}
+            {% translate "Signing in needs a code from your phone as well as your password, so your password alone isn’t enough to get in." %}
         {% endelement %}
         {% if "totp" in MFA_SUPPORTED_TYPES %}
             {% element panel %}
@@ -40,7 +42,7 @@
                     {% url 'mfa_activate_totp' as activate_url %}
                     {% if authenticators.totp %}
                         {% element button href=deactivate_url tags="danger,delete,panel" %}
-                            {% translate "Turn off" %}
+                            {% translate "Turn off the app" %}
                         {% endelement %}
                     {% else %}
                         {% element button href=activate_url tags="panel" %}
@@ -103,21 +105,21 @@
                             {% if unused_count > 0 and not MFA_RECOVERY_CODES_SHOW_ONCE %}
                                 {% slot actions %}
                                     {% url 'mfa_view_recovery_codes' as view_url %}
-                                    {% element button href=view_url tags="panel" %}
-                                        {% translate "See them" %}
+                                    {% element button href=view_url tags="primary,panel" %}
+                                        {% translate "See your codes" %}
                                     {% endelement %}
                                 {% endslot %}
                                 {% slot actions %}
                                     {% url 'mfa_download_recovery_codes' as download_url %}
-                                    {% element button href=download_url tags="secondary,panel" %}
-                                        {% translate "Download them" %}
+                                    {% element button href=download_url tags="panel" %}
+                                        {% translate "Download your codes" %}
                                     {% endelement %}
                                 {% endslot %}
                             {% endif %}
                         {% endif %}
                         {% slot actions %}
                             {% url 'mfa_generate_recovery_codes' as generate_url %}
-                            {% element button href=generate_url tags="secondary,panel" %}
+                            {% element button href=generate_url tags="outline,panel" %}
                                 {% translate "Make new codes" %}
                             {% endelement %}
                         {% endslot %}

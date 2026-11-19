@@ -74,11 +74,13 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   (`manage.py capy_auth_reencrypt`) and emails an owner after repeated wrong codes
   (`receivers.py`, on allauth's signals); a secret no key can read raises an error the
   middleware (`limits/middleware.py`) turns into a clear page. `checks.py` holds E007,
-  E008 and W005. Every MFA page is rewritten from allauth's in capy-auth's words
+  E008 and W005. Six MFA pages are rewritten from allauth's in capy-auth's words
   (`templates/mfa/`): the overview, setting up (the QR code on white, a key you can
   copy), the code step (which code to enter), turning it off (what it removes),
-  recovery codes (what they're for, download) and making new ones, each with a way
-  back. Changes ask for the password again.
+  recovery codes (what they're for, where to keep them, download or copy) and making
+  new ones, each with a way back; so are their confirmation messages. The rest stay
+  allauth's, inside the layout: confirming it's you with a code, and the security-key
+  pages, which capy-auth doesn't turn on. Changes ask for the password again.
 - **Sessions** (`sessions/`, `templates/usersessions/`):
   - **Asking again:** allauth asks for the password again, on its "Confirm it's you"
     page (rewritten by capy-auth), before sensitive changes: adding, removing or
@@ -1334,7 +1336,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), and allauth's pages |
 | `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), re-encrypting and the wrong-code warning (`services.py`, `receivers.py`), and the startup checks E007, E008 and W005 (`checks.py`) |
 | `src/capy_auth/management/commands/capy_auth_reencrypt.py` | `manage.py capy_auth_reencrypt`: re-encrypts every MFA secret with the first key |
-| `src/capy_auth/templates/mfa/` | The two-step sign-in pages (rewritten from allauth's): the overview, setting up and turning off an authenticator app, the sign-in code step, and recovery codes |
+| `src/capy_auth/templates/mfa/` | The two-step sign-in pages (rewritten from allauth's): the overview, setting up and turning off an authenticator app, the sign-in code step, recovery codes, and their confirmation messages |
 | `src/capy_auth/templates/capy_auth/mfa_unavailable.html` | The page shown when a stored MFA secret can't be decrypted |
 | `src/capy_auth/sessions/` | Recording every sign-in (`recording.py`), the "Signed-in devices" page's view (`views.py`), and the startup checks E006 and W004 (`checks.py`) |
 | `src/capy_auth/templates/usersessions/` | The "Signed-in devices" page at `accounts/sessions/` and its message (rewritten from allauth's; compare with allauth's when upgrading it, as for `account/`) |
@@ -1373,7 +1375,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_addresses_edges.py` | Edge cases: blank and shared addresses, the migration on real migration history, the email page's limits, the real admin "add user" page, when a reset does and doesn't confirm |
 | `tests/test_sessions.py` | Checks asking for the password again (the 5-minute window), the "Signed-in devices" page, signing out everywhere else, and E006/W004 |
 | `tests/test_sessions_edges.py` | Edge cases: every action that asks again, the 5-minute edge, sessions from the admin's login and from before the install, password changes, other users, hostile or long browser descriptions, IPv6 |
-| `tests/test_mfa.py` | Checks setting up an authenticator app, signing in with its code, recovery codes, encrypted storage, changing keys and re-encrypting, the wrong-code warning, the pages' hints, the checks and the settings page's status line |
+| `tests/test_mfa.py` | Checks setting up an authenticator app, signing in with its code, recovery codes, encrypted storage, changing keys and re-encrypting, the wrong-code warning, each MFA page's hints, wording and way back, the checks and the settings page's status line |
 | `tests/test_mfa_edges.py` | Edge cases: codes at time-step edges, spaces, reuse, the wrong-code limit, recovery codes made again and downloaded, a lost or malformed key, bans and password resets |
 | `tests/totp.py` | Authenticator-app codes worked out as the apps do (RFC 6238), so the tests prove a real app works |
 | `tests/test_bans.py` | Checks a banned address can't sign up or be added without the page showing it, gets only the ban notice, and is recorded; banning suspends, removes the password (signing every session out, recorded or not, in any store) and emails; lifting reactivates and emails a link to choose a new password; the admin permissions; the check E005 |

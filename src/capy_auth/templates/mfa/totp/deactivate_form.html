@@ -17,7 +17,7 @@
             {% translate "Turn off two-step sign-in" %}
         {% endelement %}
         {% element p %}
-            {% translate "This removes your authenticator app and your recovery codes. Signing in will then need only your password, so anyone who learns it could get in." %}
+            {% translate "Signing in will stop asking for codes from your authenticator app, and your recovery codes will be deleted. Signing in will then need only your password, so anyone who learns it could get in." %}
         {% endelement %}
         {% url 'mfa_deactivate_totp' as action_url %}
         {% element form form=form method="post" action=action_url no_visible_fields=True %}

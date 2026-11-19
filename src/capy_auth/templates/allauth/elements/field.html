@@ -24,7 +24,7 @@
             {% endslot %}
         </label>
         {% if attrs.type == "textarea" %}
-            <textarea class="textarea{% if attrs.errors %} textarea-error{% endif %} w-full text-base"
+            <textarea class="textarea{% if attrs.errors %} textarea-error{% endif %}{% if attrs.readonly %} font-mono{% endif %} w-full text-base"
                       {% if attrs.required %}required{% endif %}
                       {% if attrs.rows %}rows="{{ attrs.rows }}"{% endif %}
                       {% if attrs.disabled %}disabled{% endif %}

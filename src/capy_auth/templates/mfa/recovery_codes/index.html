@@ -1,8 +1,9 @@
 {% extends "mfa/recovery_codes/base.html" %}
 {% comment %}
   capy-auth's version of allauth 65.22.1's mfa/recovery_codes/index.html, rewritten
-  rather than copied: what the codes are for and where to keep them, the download
-  first, and "Done" back to the overview. It keeps allauth's codes box and script (a
+  rather than copied: what the codes are for and where to keep them, the download as
+  the main action (making new codes is quieter: it cancels the old ones), a hint that
+  a click copies them, and "Done" back to the overview. It keeps allauth's codes box and script (a
   click on the box copies the codes). Check allauth's original when upgrading allauth
   (a test fails when it changes).
 {% endcomment %}
@@ -26,6 +27,9 @@
                 {% slot label %}
                     {% translate "Your unused codes" %}
                 {% endslot %}
+                {% slot help_text %}
+                    {% translate "Click the box to copy them, or select them and copy." %}
+                {% endslot %}
                 {# djlint:off #}
 {% slot value %}{% for code in unused_codes %}{% if forloop.counter0 %}
 {% endif %}{{ code }}{% endfor %}{% endslot %}
@@ -35,13 +39,13 @@
         <div class="flex flex-wrap gap-2">
             {% if can_download_codes %}
                 {% url 'mfa_download_recovery_codes' as download_url %}
-                {% element button href=download_url %}
+                {% element button href=download_url tags="primary" %}
                     {% translate "Download them" %}
                 {% endelement %}
             {% endif %}
             {% if can_generate_codes %}
                 {% url 'mfa_generate_recovery_codes' as generate_url %}
-                {% element button href=generate_url tags="secondary" %}
+                {% element button href=generate_url tags="outline" %}
                     {% translate "Make new codes" %}
                 {% endelement %}
             {% endif %}

@@ -17,9 +17,9 @@
         {% endelement %}
         {% element p %}
             {% if unused_code_count %}
-                {% translate "You’ll get a new set of codes, and your old codes will stop working. Save the new ones before you leave the next page." %}
+                {% translate "You’ll get a new set of codes, and your old codes will stop working. Save the new ones somewhere safe." %}
             {% else %}
-                {% translate "You’ll get a new set of codes. Save them before you leave the next page." %}
+                {% translate "You’ll get a new set of codes. Save them somewhere safe." %}
             {% endif %}
         {% endelement %}
         {% url 'mfa_generate_recovery_codes' as action_url %}
@@ -33,6 +33,7 @@
                     {% if unused_code_count %}
                         danger
                     {% else %}
+                        primary
                     {% endif %}
                 {% endsetvar %}
                 {% element button type="submit" tags=tags %}
