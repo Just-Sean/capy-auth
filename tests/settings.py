@@ -16,6 +16,7 @@ so the module is tested with both:
 
 import os
 import secrets
+from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
@@ -36,6 +37,7 @@ INSTALLED_APPS = [
     "capy_auth",
     "allauth",
     "allauth.account",
+    "axes",
 ]
 
 MIDDLEWARE = [
@@ -47,17 +49,26 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "capy_auth.limits.middleware.CacheDownMiddleware",
+    "axes.middleware.AxesMiddleware",  # last, as in capy-project
 ]
 
-# As the README tells a project: allauth's backend for logins, Django's for the admin's
-# login until capy-auth sends it through allauth. Differs from capy-project on purpose,
-# for now: capy-project also runs its per-address login limit and django-axes first
-# (config/settings/users.py); the capy-auth feature that makes allauth work with them
-# adds them here too.
+# As the README tells a project: django-axes first (lockouts, as capy-project runs
+# them; capy-project's own per-address limit is its own code, so not here), allauth's
+# backend for logins, Django's for the admin's login until capy-auth sends it through
+# allauth.
 AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
+# capy-project's django-axes settings (config/settings/users.py), plus capy-auth's line.
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=15)
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_RESET_ON_SUCCESS = True
+AXES_ENABLE_RETRY_AFTER_HEADER = True
+AXES_USERNAME_CALLABLE = "capy_auth.limits.axes.login_name"
 
 # capy-auth's allauth settings, exactly as the README's "Add it to a project" gives them.
 ACCOUNT_ADAPTER = "capy_auth.account.adapter.AccountAdapter"

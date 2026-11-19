@@ -71,6 +71,12 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
     or Redis was restarted, cleared or full): it isn't sent (an error is logged) and
     the person asks for a new code or reset link.
   - Emails with attachments (allauth's have none) are sent during the request.
+- **Limits** (`limits/`): `axes.py` tells django-axes to count failed logins by the
+  account's email, so one person's typos lock out only that account; `middleware.py`
+  turns the cache (Redis) being down on sign-in pages into a 503 page instead of an
+  error, never skipping the limits; `checks.py` stops a production site whose email
+  can't be sent (`capy_auth.E004`). The proxy setting for allauth's own limits is in
+  the install steps.
 - **Passwords** (`passwords/breached.py`): a Django password validator the project adds
   to `AUTH_PASSWORD_VALIDATORS`, which reads who to check from the settings record.
   Why it works this way: Have I Been Pwned's range API with padding, so only a
@@ -99,9 +105,9 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   project. It has allauth, capy-project's strict Content Security Policy (enforced),
   copies of capy-project's `base.html` and `layout.html` (`tests/templates/`), and
   either Django's own user model or a copy of capy-project's (`tests/email_users/`,
-  with `TEST_USER_MODEL=email`). It doesn't have capy-project's login limits
-  (django-axes and the per-address limit) yet: the feature that makes capy-auth work
-  with them adds them here. `tests/` also checks the rules below.
+  with `TEST_USER_MODEL=email`). It runs django-axes as capy-project does (a
+  development-only dependency); capy-project's own per-address limit is capy-project's
+  code, so it isn't here. `tests/` also checks the rules below.
 - **Released as git tags** (`vX.Y.Z`) that projects install from GitHub, never on the
   public PyPI (`pyproject.toml` refuses an upload). Built with uv's own build backend,
   kept up to date with capy-module by Copier (see
@@ -132,8 +138,10 @@ In a project made from capy-project, with its database running
 2. In `config/settings/core.py`, add `"capy_auth"` to `INSTALLED_APPS` after
    `"accounts"`, and allauth's apps after `"django.contrib.messages"`. `capy_auth`
    must come before allauth's apps, so its versions of allauth's page templates are
-   the ones Django uses. In `MIDDLEWARE`, add allauth's right after Django's messages
-   middleware (django-axes' stays last):
+   the ones Django uses. In `MIDDLEWARE`, add allauth's and capy-auth's right after
+   Django's messages middleware (django-axes' stays last). capy-auth's shows a
+   "temporarily unavailable" page (503) on sign-in pages while the cache (Redis) is
+   down, instead of a server error; nothing gets through:
 
    ```python
    INSTALLED_APPS = [
@@ -149,6 +157,7 @@ In a project made from capy-project, with its database running
        ...,
        "django.contrib.messages.middleware.MessageMiddleware",
        "allauth.account.middleware.AccountMiddleware",
+       "capy_auth.limits.middleware.CacheDownMiddleware",
        ...,
    ]
    ```
@@ -172,10 +181,7 @@ In a project made from capy-project, with its database running
      keep `ModelBackend` after it for the admin's own login page (a later capy-auth
      feature sends that through allauth too). capy-project's two login-limit backends
      stay first. Update the comment above the list too: `ModelBackend` is no longer
-     "the real login". Until capy-auth's rate-limit feature, django-axes probably
-     counts every failed email login from one address together (allauth logs in by
-     email, axes by username), so 5 wrong passwords from a shared office address may
-     briefly lock out email logins from that address.
+     "the real login".
 
      ```python
      AUTHENTICATION_BACKENDS = [
@@ -184,6 +190,21 @@ In a project made from capy-project, with its database running
          "allauth.account.auth_backends.AuthenticationBackend",  # logins by email
          "django.contrib.auth.backends.ModelBackend",  # the admin's login page
      ]
+     ```
+
+   - **django-axes counts by email:** add this next to capy-project's other `AXES_`
+     settings. allauth logs in by email and axes counts by username, so without it
+     every failed email login from one address counts under one empty name, and 5
+     wrong passwords from a shared office would lock out everyone there. With it,
+     axes counts each account by its email (the admin's username logins and axes'
+     reset after a successful login too), so 5 failures lock out that account from
+     that address and nobody else. capy-project's per-address limit
+     (`IPLoginLimitBackend`, 30 failures from one address) works as it is. allauth's
+     own limits apply as well (for example 5 failures per email in 5 minutes), so
+     the stricter one decides.
+
+     ```python
+     AXES_USERNAME_CALLABLE = "capy_auth.limits.axes.login_name"
      ```
 
    - **allauth, as capy-auth sets it up** (Django's checks warn, with
@@ -284,8 +305,8 @@ In a project made from capy-project, with its database running
      `runserver` runs.
    - **Production** needs `EMAIL_URL` (`smtp+tls://` or `smtp+ssl://`) and
      `DJANGO_DEFAULT_FROM_EMAIL` in `.env.production` (the project README's "Email"
-     section). Without them, no email is sent: the worker's job fails with "Email
-     isn't set up".
+     section). Without them, Django's checks stop the site (`capy_auth.E004`), since
+     signup and password resets can't work.
    - **The worker and the cache:** capy-auth's emails are sent by the project's
      background worker (its `worker` service in production; development and tests run
      jobs straight away) and wait for it in the cache (Redis). capy-project already has
@@ -434,7 +455,8 @@ What capy-auth logs (never an email's content or address): a warning when an ema
 sent during the request instead of by the worker (the cache or job queue is down, or it
 has attachments) and each time a send fails and will be tried again; an error when a
 queued email is gone from the cache, can't be read, or couldn't be sent after the last
-try. An error, too, when Have I Been Pwned can't be reached or answers badly (at most
+try. An error when the cache is down and sign-in pages show "temporarily
+unavailable". An error, too, when Have I Been Pwned can't be reached or answers badly (at most
 once a minute, while new passwords are refused; never the password or who it was for).
 
 ## Rules that keep it pluggable
@@ -974,10 +996,11 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
 | `src/capy_auth/templates/account/` | allauth pages copied with their inline style removed (compare with allauth's when upgrading it; likewise `send_mail` in `account/adapter.py`, copied from allauth's) |
 | `src/capy_auth/templates/capy_auth/fields/widget.html` | daisyUI's class for each kind of form input |
+| `src/capy_auth/limits/` | django-axes counting by email (`axes.py`), the "temporarily unavailable" page while the cache is down (`middleware.py`, `templates/capy_auth/unavailable.html`), the email check E004 (`checks.py`) |
 | `src/capy_auth/passwords/breached.py` | The breached-password check: asks Have I Been Pwned with a 5-character hash prefix, refuses breached passwords, fails closed |
 | `src/capy_auth/templatetags/capy_auth_forms.py` | The `daisy_widget` filter: adds the classes `widget.html` picks to an input |
 | `src/capy_auth/migrations/` | Database migrations (see Database) |
-| `tests/settings.py` | A tiny stand-in project for the tests, with allauth, capy-project's Content Security Policy, jobs run straight away (as in capy-project's development and tests) and a choice of user model (`TEST_USER_MODEL`) |
+| `tests/settings.py` | A tiny stand-in project for the tests, with allauth, capy-project's Content Security Policy, django-axes as capy-project runs it, jobs run straight away (as in capy-project's development and tests) and a choice of user model (`TEST_USER_MODEL`) |
 | `tests/urls.py` | The stand-in project's URLs: capy-auth's (its own page and allauth's) under `accounts/`, and a page its own tests use |
 | `tests/templates/` | Copies of capy-project's `base.html` and `layout.html`, which the module's pages extend |
 | `tests/email_users/` | A copy of capy-project's user model, used with `TEST_USER_MODEL=email` |
@@ -987,6 +1010,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_email_password.py` | Checks signup, verification by code, login, logout, password reset and change, end to end |
 | `tests/test_email_password_edges.py` | Edge cases and security: email case and spaces, code limits, rate limits behind a proxy, timing, redirects, reset tokens |
 | `tests/test_background_email.py` | Checks emails go through the job with only a key in it, arrive as allauth built them, are sent once, retried after a mail server failure, and sent at once when the cache or job queue is down |
+| `tests/test_limits.py` | Checks axes locks out one account, not everyone at an address; the cache-down page; the email check |
 | `tests/test_breached_passwords.py` | Checks the breached-password check: what leaves the server, answers good and bad, failing closed and the minute after a failure, who is checked, the setting, its migration and checks |
 | `tests/test_breached_password_pages.py` | Checks it on every page and command that sets a password (signup, change, reset, the admin, `createsuperuser`), and that the settings record is read once per request |
 | `tests/hibp.py` | A stand-in for Have I Been Pwned (padded answers), so no test goes over the network |

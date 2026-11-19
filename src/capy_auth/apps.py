@@ -18,9 +18,11 @@ class CapyAuthConfig(AppConfig):
             check_security_settings,
             check_starting_values,
         )
+        from capy_auth.limits.checks import check_email_can_be_sent
 
         checks.register(check_account_adapter)
         checks.register(check_starting_values)
         checks.register(check_security_settings)
         checks.register(check_email_queue)
         checks.register(check_breached_password_validator)
+        checks.register(check_email_can_be_sent)
