@@ -39,6 +39,12 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   choices (on/off, a level); lists get their own tables in their own sections: the ban
   list, and social-login providers, whose secrets capy-auth stores encrypted (allauth's
   own provider table keeps them in plain text).
+- **Accounts** are allauth's, set up as the README's install steps give: signup with
+  email and password, login by email, email verified by a code before the first
+  login, password reset links that work once for an hour, notification emails, and
+  the same answers for known and unknown addresses. `urls.py` mounts allauth's pages
+  with capy-auth's own "Your account" page (`account/views.py`), where people land
+  after logging in. Emails are sent while the page is answered, for now.
 - **Pages** come from allauth. capy-auth overrides only allauth's page frame and its
   small building blocks, under allauth's own template names:
   `templates/allauth/layouts/base.html` puts every allauth page inside the project's
@@ -70,8 +76,8 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
 
 ## Add it to a project
 
-capy-auth is still being built. Its own lines (allauth's apps, middleware,
-login backends, URLs and settings) are added to these steps as each part lands.
+These are the exact lines for a project made from capy-project. allauth's options are
+set the way capy-auth's pages, tests and security choices expect; the comments say why.
 
 In a project made from capy-project, with its database running
 (`docker compose up -d`):
@@ -90,24 +96,82 @@ In a project made from capy-project, with its database running
    deploying, run the `uv add … --tag vX.Y.Z` line again: a folder outside the project
    can't be built into its image.
 
-2. Add `"capy_auth"` to `INSTALLED_APPS` in `config/settings/core.py`, in the
-   "your apps" part at the top. It must come before allauth's apps (`"allauth"`,
-   `"allauth.account"`, …; their lines come with capy-auth's later features), so its versions of allauth's page templates are the ones
-   Django uses.
-3. If the module has URLs, include them in `config/urls.py` (and change its import to
-   `from django.urls import include, path`):
-   `path("capy-auth/", include("capy_auth.urls"))`.
-4. Settings, in `config/settings/users.py` (where capy-project keeps its login
-   settings):
-   - **Required:** point allauth at capy-auth's account adapter, which applies the
-     choices made on the capy-auth settings page. Without it, Django's checks stop
-     with the error `capy_auth.E001`. If the project already has its own adapter, make
-     it a subclass of capy-auth's instead.
+2. In `config/settings/core.py`, add to `INSTALLED_APPS` `"capy_auth"` in the "your
+   apps" part at the top (after `"accounts"`), and allauth's apps after
+   `"django.contrib.messages"`. `capy_auth` must come before allauth's apps, so its
+   versions of allauth's page templates are the ones Django uses:
+
+   ```python
+       "capy_auth",
+       ...
+       "allauth",
+       "allauth.account",
+   ```
+
+   In `MIDDLEWARE`, add allauth's right after
+   `"django.contrib.messages.middleware.MessageMiddleware"` (django-axes' stays last):
+
+   ```python
+       "allauth.account.middleware.AccountMiddleware",
+   ```
+
+3. In `config/urls.py` (change its import to `from django.urls import include, path`):
+
+   ```python
+       path("accounts/", include("capy_auth.urls")),
+   ```
+
+   Mounted there, Django's default `LOGIN_URL` (`/accounts/login/`) and
+   `LOGIN_REDIRECT_URL` (`/accounts/profile/`, capy-auth's "Your account" page) already
+   point at capy-auth's pages, so leave both unset.
+
+4. In `config/settings/users.py`, where capy-project keeps its login settings:
+   - **Login backends:** put allauth's backend where Django's `ModelBackend` is, and
+     keep `ModelBackend` after it for the admin's own login page (a later capy-auth
+     feature sends that through allauth too). capy-project's two login-limit backends
+     stay first. Until capy-auth's rate-limit feature, django-axes doesn't count failed
+     logins by email; allauth's own limits apply meanwhile.
 
      ```python
-     ACCOUNT_ADAPTER = "capy_auth.account.adapter.AccountAdapter"
+     AUTHENTICATION_BACKENDS = [
+         "config.login_limits.IPLoginLimitBackend",
+         "axes.backends.AxesStandaloneBackend",
+         "allauth.account.auth_backends.AuthenticationBackend",  # logins by email
+         "django.contrib.auth.backends.ModelBackend",  # the admin's login page
+     ]
      ```
 
+   - **allauth, as capy-auth sets it up:**
+
+     ```python
+     # capy-auth's account adapter: applies the capy-auth settings page's choices.
+     # Without it, Django's checks stop with capy_auth.E001. A project with its own
+     # adapter makes it a subclass of this one instead.
+     ACCOUNT_ADAPTER = "capy_auth.account.adapter.AccountAdapter"
+     # Log in with an email address; sign up with just email and password (allauth
+     # fills in the username).
+     ACCOUNT_LOGIN_METHODS = {"email"}
+     ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+     # The email must be confirmed before the first login, with a code from an email
+     # (no confirmation links: a code works on any device and puts no token in a URL).
+     ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+     ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+     # Logins last for the session's lifetime (Django's 2 weeks), not only until the
+     # browser closes, with no "remember me" box.
+     ACCOUNT_SESSION_REMEMBER = True
+     # Tell people by email when their password or email address changes.
+     ACCOUNT_EMAIL_NOTIFICATIONS = True
+     # Password reset links work once and expire after 1 hour (Django's default: 3 days).
+     PASSWORD_RESET_TIMEOUT = 60 * 60
+     ```
+
+     capy-project's password rules (`AUTH_PASSWORD_VALIDATORS`: 12 characters minimum,
+     no common or all-digit passwords, no composition rules) stay as they are, and
+     allauth already answers signup, login and reset the same way for known and unknown
+     addresses (`ACCOUNT_PREVENT_ENUMERATION`, on by default).
+
+   - **Email must be set up** (`EMAIL_URL`): signup, verification codes and password
+     resets all send email.
    - **Optional:** the `CAPY_AUTH_` settings in [Settings](#settings) only set starting
      values. Set one (as `True` or `False`, e.g. `env.bool(...)` when read from the
      environment, and listed in `.env.example`) only to start differently from its
@@ -252,6 +316,10 @@ Never log secrets, passwords, tokens or personal data; log IDs instead.
   (`{% url "capy_auth:detail" … %}`), so
   they never clash with a project's. Models expose a `public_id` (a UUID) in URLs and
   APIs, never the database `id`, as projects made from capy-project do.
+  **Exception:** `capy_auth.urls` includes allauth's pages, whose names
+  (`account_login`, `account_signup`, …) allauth's own code relies on, so it has no
+  `app_name`; capy-auth's own page names start with `capy_auth_` instead
+  (`capy_auth_account`).
 - **Business logic** lives in plain functions (`services.py` for changes, `selectors.py`
   for reads) that views, the admin and background jobs share.
 - **Slow work** (emails, file processing, calls to other services) goes to a
@@ -752,6 +820,9 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/models.py` | Lists the module's database models for Django (each lives in its section) |
 | `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
 | `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`) and Django's checks for the project's setup (`checks.py`) |
+| `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): its own pages and allauth's |
+| `src/capy_auth/account/views.py` | The "Your account" page, where people land after logging in |
+| `src/capy_auth/templates/capy_auth/account.html` | That page's template |
 | `src/capy_auth/account/adapter.py` | capy-auth's account adapter: allauth asks it how to behave (e.g. whether signup is open) |
 | `src/capy_auth/templates/allauth/layouts/base.html` | Puts every allauth page inside the project's `layout.html` |
 | `src/capy_auth/templates/allauth/elements/` | allauth's building blocks (buttons, fields, forms, …) with daisyUI classes |
@@ -766,6 +837,8 @@ If the repository itself moved, also point git at it:
 | `tests/test_stand_in_project.py` | Checks the stand-in project gives the module what a capy project does |
 | `tests/test_pages.py` | Checks allauth's pages render inside the layout under the strict policy, with daisyUI inputs, visible labels, linked help text and errors, and that the overrides keep up with allauth |
 | `tests/test_settings_store.py` | Checks the settings record, its admin page, Django's checks and closing signup |
+| `tests/test_email_password.py` | Checks signup, verification by code, login, logout, password reset and change, end to end |
+| `tests/conftest.py` | Clears allauth's rate-limit counts before each test |
 | `tests/helpers.py` | `check_page()`, shared by the tests that request pages: in the layout, under the policy, accessible |
 | `tests/test_app.py` | Checks the app loads from its own package and its migrations are complete |
 | `tests/test_host_rules.py` | Checks the module adds no `check --deploy` warning to a project |

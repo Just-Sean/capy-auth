@@ -14,5 +14,5 @@ def layout_check(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("layout-check/", layout_check),
-    path("accounts/", include("allauth.urls")),
+    path("accounts/", include("capy_auth.urls")),
 ]

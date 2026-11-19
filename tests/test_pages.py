@@ -16,7 +16,7 @@ from django.template import Context, Template
 from django.template.base import Origin
 from django.template.loader import get_template
 from django.test import Client
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from tests.helpers import check_page, dangling_describedby
 from tests.test_csp import blocked_in
@@ -34,7 +34,6 @@ LOGGED_OUT_PAGES = [
     "account_reset_password",
     "account_reset_password_done",
     "account_reset_password_from_key_done",
-    "account_email_verification_sent",
     "account_inactive",
 ]
 LOGGED_IN_PAGES = [
@@ -87,9 +86,11 @@ def test_a_bad_password_reset_link_renders_inside_the_layout(client):
     check_page(client.get(url))
 
 
-@pytest.mark.django_db
-def test_a_bad_email_confirmation_link_renders_inside_the_layout(client):
-    check_page(client.get(reverse("account_confirm_email", args=["bad-key"])))
+def test_email_is_verified_by_code_only_so_there_is_no_link_page():
+    # With verification by code, allauth has no confirmation-link page to render or
+    # attack (the code page is checked with the signup flow in test_email_password.py).
+    with pytest.raises(NoReverseMatch):
+        reverse("account_confirm_email", args=["any-key"])
 
 
 @pytest.mark.django_db
@@ -106,7 +107,9 @@ def test_the_logged_in_menu_from_allauth_is_left_out_and_the_title_is_set(client
 @pytest.mark.django_db
 def test_login_with_a_wrong_password_shows_the_error_at_the_top(client, user):
     page = check_page(
-        client.post(reverse("account_login"), {"login": "ada", "password": PASSWORD + "x"})
+        client.post(
+            reverse("account_login"), {"login": "ada@example.com", "password": PASSWORD + "x"}
+        )
     )
     assert re.search(r'<div role="alert" class="alert alert-error">[^<]+</div>', page)
 
@@ -114,7 +117,9 @@ def test_login_with_a_wrong_password_shows_the_error_at_the_top(client, user):
 @pytest.mark.django_db
 def test_markup_typed_into_a_form_is_shown_escaped(client):
     page = check_page(
-        client.post(reverse("account_login"), {"login": '"><script>x</script>', "password": "y"})
+        client.post(
+            reverse("account_login"), {"login": '"><script>x</script>@example.com', "password": "y"}
+        )
     )
     assert "<script>x" not in page
     assert "&lt;script&gt;x" in page
@@ -123,7 +128,7 @@ def test_markup_typed_into_a_form_is_shown_escaped(client):
 @pytest.mark.django_db
 def test_forms_refuse_a_post_without_the_csrf_token():
     response = Client(enforce_csrf_checks=True).post(
-        reverse("account_login"), {"login": "ada", "password": "x"}
+        reverse("account_login"), {"login": "ada@example.com", "password": "x"}
     )
     assert response.status_code == 403
 
@@ -134,7 +139,7 @@ def test_field_errors_are_linked_to_their_inputs(client):
     # check_page checks every such id exists, so screen readers read the error out.
     page = check_page(client.post(reverse("account_signup"), {}))
     assert re.search(r'<input[^>]*aria-invalid="true"', page)
-    assert re.search(r'<div id="id_username_error">\s*<p><strong>Error:</strong> ', page)
+    assert re.search(r'<div id="id_email_error">\s*<p><strong>Error:</strong> ', page)
     assert "input input-error w-full text-base" in page
 
 

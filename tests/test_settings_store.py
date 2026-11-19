@@ -55,13 +55,12 @@ def set_signup_open(value):
     record.save()
 
 
-def signup_data(name="eve"):
-    return {
-        "username": name,
-        "email": f"{name}@example.com",
-        "password1": PASSWORD,
-        "password2": PASSWORD,
-    }
+def signup_data(email="eve@example.com"):
+    return {"email": email, "password1": PASSWORD, "password2": PASSWORD}
+
+
+def eve_exists():
+    return get_user_model().objects.filter(email="eve@example.com").exists()
 
 
 # --- The record ----------------------------------------------------------------------
@@ -233,7 +232,7 @@ def test_open_signup_really_creates_a_user(client, settings):
     # Proves signup_data() is valid, so "no user" below means "closed".
     settings.ACCOUNT_EMAIL_VERIFICATION = "none"  # sending email comes with signup
     client.post(SIGNUP, signup_data())
-    assert get_user_model().objects.filter(username="eve").exists()
+    assert eve_exists()
 
 
 @pytest.mark.django_db
@@ -244,7 +243,7 @@ def test_closed_signup_shows_the_closed_page_and_creates_no_user(client):
     assert 'name="password1"' not in page
     response = client.post(f"{SIGNUP}?next=/admin/", {**signup_data(), "next": "/admin/"})
     check_page(response)
-    assert not get_user_model().objects.filter(username="eve").exists()
+    assert not eve_exists()
 
 
 @pytest.mark.django_db
@@ -256,7 +255,7 @@ def test_closed_signup_creates_nobody_for_a_logged_in_user_either(client):
     )
     set_signup_open(False)
     client.post(SIGNUP, signup_data())
-    assert not get_user_model().objects.filter(username="eve").exists()
+    assert not eve_exists()
 
 
 @pytest.mark.django_db
