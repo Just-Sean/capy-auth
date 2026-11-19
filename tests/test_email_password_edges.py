@@ -255,12 +255,14 @@ def test_reset_for_an_inactive_user_sends_nothing_and_looks_the_same(client):
 
 
 @pytest.mark.django_db
-def test_reset_for_an_unverified_user_still_needs_a_code_to_log_in(client):
-    make_user("bob@example.com", verified=False)
+def test_a_completed_reset_confirms_the_address_the_link_went_to(client):
+    """The link reached that inbox, as a code would have (allauth's reset by code
+    confirms it too), so Bob can log in without another code."""
+    bob = make_user("bob@example.com", verified=False)
     client.post(RESET, {"email": "bob@example.com"})
     set_new_password(client, reset_link(reset_mails()[0]))
-    assert client.get(ACCOUNT_PAGE).status_code == 302
-    assert log_in(Client(), email="bob@example.com", password=NEW_PASSWORD).url != ACCOUNT_PAGE
+    assert bob.emailaddress_set.get().verified
+    assert log_in(Client(), email="bob@example.com", password=NEW_PASSWORD).url == ACCOUNT_PAGE
 
 
 @pytest.mark.django_db

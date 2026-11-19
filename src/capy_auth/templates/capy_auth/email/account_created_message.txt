@@ -1,0 +1,12 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with site_name=current_site.name %}Someone at {{ site_name }} created an account for you, using this email address.
+
+Choose your password with this link. It works once, for {{ link_lifetime }}; after that, use "Forgot your password?" on the sign-in page:
+
+{{ password_reset_url }}
+
+Afterwards, sign in here with this email address and your password:
+
+{{ login_url }}
+
+If you weren't expecting this, you can ignore this email.{% endblocktranslate %}
+{% endautoescape %}
