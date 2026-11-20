@@ -7,10 +7,16 @@ README)."""
 
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from allauth.socialaccount.helpers import render_authentication_error
 from allauth.socialaccount.models import SocialApp
+from allauth.socialaccount.providers.base.constants import AuthError
 from django.conf import settings
 from django.core.exceptions import MultipleObjectsReturned
 from django.http import Http404, HttpResponseNotFound
+
+from capy_auth.bans.models import AttemptKind
+from capy_auth.bans.selectors import is_banned_email, is_banned_social_account
+from capy_auth.bans.services import record_attempt
 
 from .selectors import is_pretend, set_up_apps, switched_on
 
@@ -24,6 +30,14 @@ def is_sign_in_address(request):
     match = getattr(request, "resolver_match", None)
     name = (match.url_name or "") if match else ""
     return name.endswith(SIGN_IN_ADDRESS_ENDINGS) and not name.startswith("account_")
+
+
+def emails_of(sociallogin):
+    """Every email the provider gave: its list, and the one on the new account."""
+    emails = {address.email for address in sociallogin.email_addresses}
+    if sociallogin.user is not None and sociallogin.user.email:
+        emails.add(sociallogin.user.email)
+    return emails
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
@@ -52,7 +66,18 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
 
     def pre_social_login(self, request, sociallogin):
         """Every sign-in and new connection through a provider comes here once the
-        provider has answered: refused when it's switched off."""
-        if sociallogin.account.provider not in switched_on():
+        provider has answered: refused when it's switched off, or when the account at
+        the provider or any email it gives is on the ban list (the page doesn't say
+        why, as at email signup; a new account's banned email is recorded for staff)."""
+        account = sociallogin.account
+        if account.provider not in switched_on():
             raise ImmediateHttpResponse(HttpResponseNotFound())
+        banned_emails = [e for e in emails_of(sociallogin) if is_banned_email(e)]
+        if banned_emails and not sociallogin.is_existing:
+            for email in banned_emails:
+                record_attempt(email, AttemptKind.SIGNUP, request)
+        if banned_emails or is_banned_social_account(account.provider, account.uid):
+            raise ImmediateHttpResponse(
+                render_authentication_error(request, account.get_provider(), AuthError.DENIED)
+            )
         super().pre_social_login(request, sociallogin)

@@ -166,8 +166,9 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   (allauth's internal `_add_email` signal) and makes sure no banned address is ever
   stored as confirmed, whatever confirms it. `checks.py` is the startup check E005. Why this
   way: refusing a banned address on the page would let anyone test which addresses are
-  banned; only the address's owner is told, by email. Social accounts are checked by
-  capy-auth's social login support (a later release).
+  banned; only the address's owner is told, by email. Sign-ins and connections through
+  a provider are checked too (`social/adapter.py`): the account at the provider, and
+  every email it gives.
 - **Passwords** (`passwords/breached.py`): a Django password validator the project adds
   to `AUTH_PASSWORD_VALIDATORS`, which reads who to check from the settings record.
   Why it works this way: Have I Been Pwned's range API with padding, so only a
@@ -687,6 +688,15 @@ In a project made from capy-project, with its database running
          INSTALLED_APPS.append("allauth.socialaccount.providers.dummy")
      ```
 
+     **Rules for signing in with a provider:** the ban list applies (see "Ban list"),
+     and so does closing signup on the capy-auth settings page. capy-auth never joins
+     a provider to an existing account just because the emails match (allauth's
+     `SOCIALACCOUNT_EMAIL_AUTHENTICATION` and `…_AUTO_CONNECT`, off by default; Django's
+     checks warn, `capy_auth.W001`, if either is turned on): someone whose email
+     already has an account is asked to sign in to it first, then connect the provider
+     from "Connected accounts" (`/accounts/3rdparty/`). The pages for this are
+     allauth's, styled by capy-auth's daisyUI building blocks.
+
      capy-auth doesn't keep the providers' access tokens (allauth's
      `SOCIALACCOUNT_STORE_TOKENS`, off by default) and starts a sign-in with a provider
      only from a form (`SOCIALACCOUNT_LOGIN_ON_GET`, off by default): Django's checks warn
@@ -1094,9 +1104,13 @@ What happens:
   `capy_auth.bans.services.suspend_accounts(ban)` too.
 - **Deleting accounts:** staff with Django's "delete user" permission can delete an
   account on its user page as usual. The ban is on the address, so it still applies.
-- **Banned social accounts:** a provider (allauth's provider ID, e.g. `google`) and the
-  person's ID there. They're stored now and checked once capy-auth's social login
-  support arrives.
+- **Banned social accounts:** a provider (allauth's provider ID, e.g. `google`, or an
+  OpenID Connect server's `provider_id`) and the person's ID there.
+- **Signing in with a provider:** a banned account at the provider, or a banned email
+  the provider gives, gets allauth's general "sign-in failed" page, which doesn't say
+  why. A new account's banned email is recorded under "Banned address attempts", as at
+  signup. An existing account signing in with a banned email was already suspended
+  by the ban.
 
 To try it: ban an address in the admin, then sign up with it. The page looks like any
 signup, the `runserver` output shows only the ban notice, and the attempt appears under
@@ -1720,6 +1734,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_passkey_pages.py` | Checks the passkey pages' wording, the second step worded for the person's ways of signing in, and that every passkey page has what its scripts need |
 | `tests/test_passkeys_edges.py` | Tries to break passkeys: bans, unconfirmed emails, replayed answers, another person's key, keys without a PIN, rate limits, the cache going down, sessions, names |
 | `tests/test_social.py` | Checks which providers are offered (switched on, set up in the settings with both values, never from the database), a switched-off provider refused at its addresses and when it answers while connected accounts still find it, the list after `migrate`, the pretend provider, E013 to E015, W007 and the weakened-settings warnings |
+| `tests/test_social_rules.py` | Checks the ban list for provider sign-ins (an account at the provider, a banned email; recorded only for new accounts), signup closed, the warnings against joining by email, and allauth's social pages inside the layout |
 | `tests/test_social_edges.py` | Tries to break it (from the QA review): look-alike and unknown addresses, database-stored apps, people connected to a switched-off provider, and the Sign-in providers page (what it shows, who can use it, what can't be switched on or deleted) |
 | `tests/test_staff_two_step.py` | Checks staff and superusers must use two-step sign-in (setting it up counts, then "Continue"; or confirm with it, offered only its ways; a passkey counts), what the pages say and allow meanwhile, the admin's login going to capy-auth's sign-in page, E010 to E012 |
 | `tests/test_staff_two_step_edges.py` | Tries to break it (from the QA review): a password alone reaching recovery codes or managing two-step sign-in, a project page named like a two-step page, the admin's Log out, POSTs and AJAX, people who stop being staff, another person's second step, where "next" leads |

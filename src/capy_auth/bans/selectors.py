@@ -5,13 +5,18 @@ from allauth.account.models import EmailAddress
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 
-from .models import BannedEmail, normalize_email
+from .models import BannedEmail, BannedSocialAccount, normalize_email
 
 
 def is_banned_email(email):
     """Whether the address is on the ban list, however it's typed."""
     email = normalize_email(email)
     return bool(email) and BannedEmail.objects.filter(email=email).exists()
+
+
+def is_banned_social_account(provider, uid):
+    """Whether this account at a sign-in provider is on the ban list."""
+    return BannedSocialAccount.objects.filter(provider=provider, uid=uid).exists()
 
 
 def accounts_using(email):

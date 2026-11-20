@@ -107,6 +107,16 @@ def security_settings():
         ("ACCOUNT_PREVENT_ENUMERATION", "True", bool(account_settings.PREVENT_ENUMERATION)),
         ("ACCOUNT_REAUTHENTICATION_REQUIRED", "True", account_settings.REAUTHENTICATION_REQUIRED),
         (
+            "SOCIALACCOUNT_EMAIL_AUTHENTICATION",
+            "False (an account isn't joined to a provider by email alone)",
+            not getattr(settings, "SOCIALACCOUNT_EMAIL_AUTHENTICATION", False),
+        ),
+        (
+            "SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT",
+            "False (connecting a provider is the person's choice)",
+            not getattr(settings, "SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT", False),
+        ),
+        (
             "SOCIALACCOUNT_LOGIN_ON_GET",
             "False (a sign-in with a provider starts only from a form)",
             not getattr(settings, "SOCIALACCOUNT_LOGIN_ON_GET", False),
