@@ -9,7 +9,7 @@ from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from allauth.socialaccount.helpers import render_authentication_error
 from allauth.socialaccount.models import SocialApp
-from allauth.socialaccount.providers.base.constants import AuthError
+from allauth.socialaccount.providers.base.constants import AuthError, AuthProcess
 from django.conf import settings
 from django.core.exceptions import MultipleObjectsReturned
 from django.http import Http404, HttpResponseNotFound
@@ -32,12 +32,24 @@ def is_sign_in_address(request):
     return name.endswith(SIGN_IN_ADDRESS_ENDINGS) and not name.startswith("account_")
 
 
-def emails_of(sociallogin):
-    """Every email the provider gave: its list, and the one on the new account."""
+def emails_from_provider(sociallogin):
+    """The emails the provider gave: its list, and the one on the new account allauth
+    built from its answer (an existing account's own email isn't the provider's)."""
     emails = {address.email for address in sociallogin.email_addresses}
-    if sociallogin.user is not None and sociallogin.user.email:
+    if not sociallogin.is_existing and sociallogin.user is not None and sociallogin.user.email:
         emails.add(sociallogin.user.email)
     return emails
+
+
+def record_banned_emails(request, sociallogin, emails):
+    """For staff, like a banned signup or added address: a connection is recorded
+    against the signed-in account; an existing account signing in isn't recorded."""
+    if sociallogin.state.get("process") == AuthProcess.CONNECT:
+        for email in emails:
+            record_attempt(email, AttemptKind.ADD_EMAIL, request, account=request.user)
+    elif not sociallogin.is_existing:
+        for email in emails:
+            record_attempt(email, AttemptKind.SIGNUP, request)
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
@@ -72,12 +84,20 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         account = sociallogin.account
         if account.provider not in switched_on():
             raise ImmediateHttpResponse(HttpResponseNotFound())
-        banned_emails = [e for e in emails_of(sociallogin) if is_banned_email(e)]
-        if banned_emails and not sociallogin.is_existing:
-            for email in banned_emails:
-                record_attempt(email, AttemptKind.SIGNUP, request)
+        banned_emails = [e for e in emails_from_provider(sociallogin) if is_banned_email(e)]
+        record_banned_emails(request, sociallogin, banned_emails)
         if banned_emails or is_banned_social_account(account.provider, account.uid):
-            raise ImmediateHttpResponse(
-                render_authentication_error(request, account.get_provider(), AuthError.DENIED)
+            error_page = render_authentication_error(
+                request,
+                account.get_provider(),
+                AuthError.DENIED,
+                extra_context={"state": sociallogin.state},  # for allauth's API clients
             )
+            raise ImmediateHttpResponse(error_page)
         super().pre_social_login(request, sociallogin)
+
+    def can_authenticate_by_email(self, login, email):
+        """Never join a provider to an existing account just because the emails match
+        (Sean's decision): not even when a project's per-provider settings ask for it.
+        The person signs in to the account first, then connects the provider."""
+        return False

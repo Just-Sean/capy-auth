@@ -692,10 +692,13 @@ In a project made from capy-project, with its database running
      and so does closing signup on the capy-auth settings page. capy-auth never joins
      a provider to an existing account just because the emails match (allauth's
      `SOCIALACCOUNT_EMAIL_AUTHENTICATION` and `…_AUTO_CONNECT`, off by default; Django's
-     checks warn, `capy_auth.W001`, if either is turned on): someone whose email
-     already has an account is asked to sign in to it first, then connect the provider
-     from "Connected accounts" (`/accounts/3rdparty/`). The pages for this are
-     allauth's, styled by capy-auth's daisyUI building blocks.
+     checks warn, `capy_auth.W001`, if either is turned on, and capy-auth's adapter
+     refuses it anyway, even when a provider's own settings ask for it). Someone
+     signing in with a provider whose email already has an account gets allauth's
+     "check your email" page, and the account's owner gets the usual "an account
+     already exists" email; nothing is joined. To use the provider, they sign in to
+     the account and connect it from "Connected accounts" (`/accounts/3rdparty/`).
+     The pages for this are allauth's, styled by capy-auth's daisyUI building blocks.
 
      capy-auth doesn't keep the providers' access tokens (allauth's
      `SOCIALACCOUNT_STORE_TOKENS`, off by default) and starts a sign-in with a provider
@@ -1108,9 +1111,11 @@ What happens:
   OpenID Connect server's `provider_id`) and the person's ID there.
 - **Signing in with a provider:** a banned account at the provider, or a banned email
   the provider gives, gets allauth's general "sign-in failed" page, which doesn't say
-  why. A new account's banned email is recorded under "Banned address attempts", as at
-  signup. An existing account signing in with a banned email was already suspended
-  by the ban.
+  why. The attempt is recorded under "Banned address attempts": as a signup for a new
+  account, or against the signed-in account for a connection. A banned social account
+  only closes that way in: the person's account here, its password and its other
+  providers keep working. To shut them out, also ban the account's own email, which
+  suspends it.
 
 To try it: ban an address in the admin, then sign up with it. The page looks like any
 signup, the `runserver` output shows only the ban notice, and the attempt appears under

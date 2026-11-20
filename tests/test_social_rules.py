@@ -4,11 +4,13 @@ for provider signups too, and allauth's social pages inside the layout."""
 
 import pytest
 from allauth.account.models import EmailAddress
-from allauth.core.exceptions import ImmediateHttpResponse
+from allauth.core import context
 from allauth.socialaccount.adapter import get_adapter
+from allauth.socialaccount.internal.flows.login import complete_login
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.contrib.messages.storage import default_storage
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.urls import reverse
 
@@ -22,57 +24,90 @@ BANNED = "mallory@example.com"
 
 @pytest.fixture
 def request_(rf):
+    """A request as allauth's callback view has it: a session, messages, a visitor."""
     request = rf.get("/accounts/github/login/callback/")
     SessionMiddleware(lambda r: None).process_request(request)
+    request._messages = default_storage(request)
     request.user = AnonymousUser()
     return request
 
 
-def provider_login(email="new@example.com", uid="42", user=None):
+def provider_login(email="new@example.com", uid="42", process="login"):
     """What allauth has once GitHub answers: the account there, and the emails it gave."""
     login = SocialLogin(
-        user=user or get_user_model()(email=email),
-        account=SocialAccount(provider="github", uid=uid, user=user),
+        user=get_user_model()(email=email),
+        account=SocialAccount(provider="github", uid=uid),
         email_addresses=[EmailAddress(email=email, verified=True)],
     )
+    login.state = {"process": process}
     return login
 
 
-def refused(request, login):
-    with pytest.raises(ImmediateHttpResponse) as caught:
-        get_adapter().pre_social_login(request, login)
-    page = caught.value.response.content.decode()
-    assert "ban" not in page.lower()  # nothing says why, as at email signup
-    return page
+def finish(request, login):
+    """allauth's flow once the provider has answered, inside the request as allauth's
+    middleware holds it."""
+    with context.request_context(request):
+        return complete_login(request, login)
+
+
+def denied(response):
+    """allauth's general "sign-in failed" page, which doesn't say why."""
+    assert response.status_code == 401
+    assert "ban" not in response.content.decode().lower()
 
 
 @pytest.mark.django_db
-def test_a_clean_provider_sign_in_goes_ahead(request_):
-    get_adapter().pre_social_login(request_, provider_login())
+def test_a_clean_provider_sign_in_creates_the_account(request_):
+    finish(request_, provider_login())
+    assert get_user_model().objects.filter(email="new@example.com").exists()
 
 
 @pytest.mark.django_db
 def test_a_banned_account_at_the_provider_is_refused(request_):
     BannedSocialAccount.objects.create(provider="github", uid="42")
-    refused(request_, provider_login())
+    denied(finish(request_, provider_login()))
+    assert not get_user_model().objects.filter(email="new@example.com").exists()
     assert not BannedEmailAttempt.objects.exists()  # an ID, not an address
 
 
 @pytest.mark.django_db
 def test_a_new_account_with_a_banned_email_is_refused_and_recorded(request_):
     BannedEmail.objects.create(email=BANNED)
-    refused(request_, provider_login(email="Mallory@Example.com"))
-    assert list(BannedEmailAttempt.objects.values_list("email", "kind")) == [(BANNED, "signup")]
+    denied(finish(request_, provider_login(email="Mallory@Example.com")))
+    assert not get_user_model().objects.filter(email__iexact=BANNED).exists()
+    assert list(BannedEmailAttempt.objects.values_list("email", "kind", "account")) == [
+        (BANNED, "signup", None)
+    ]
+
+
+@pytest.mark.django_db
+def test_connecting_a_provider_with_a_banned_email_is_refused_and_names_the_account(request_, ada):
+    BannedEmail.objects.create(email=BANNED)
+    request_.user = ada
+    denied(finish(request_, provider_login(email=BANNED, process="connect")))
+    assert not SocialAccount.objects.exists()
+    assert list(BannedEmailAttempt.objects.values_list("email", "kind", "account")) == [
+        (BANNED, "add_email", ada.pk)
+    ]
 
 
 @pytest.mark.django_db
 def test_an_existing_connection_with_a_banned_email_is_refused_unrecorded(request_, ada):
+    """The person changed their email at the provider to a banned one."""
     BannedEmail.objects.create(email=BANNED)
     SocialAccount.objects.create(user=ada, provider="github", uid="7")
-    login = provider_login(email=BANNED, uid="7", user=ada)
-    assert login.is_existing  # an account already here signing in
-    refused(request_, login)
+    denied(finish(request_, provider_login(email=BANNED, uid="7")))
     assert not BannedEmailAttempt.objects.exists()
+
+
+@pytest.mark.django_db
+def test_an_email_that_has_an_account_joins_nothing(request_, ada):
+    """Never joined by email (Sean's decision), even if a project's provider settings
+    ask for it: allauth's "check your email" page, and nothing connected."""
+    finish(request_, provider_login(email="ada@example.com"))
+    assert not SocialAccount.objects.exists()
+    assert get_adapter().can_authenticate_by_email(provider_login(), "ada@example.com") is False
+    assert get_user_model().objects.filter(email__iexact="ada@example.com").count() == 1
 
 
 @pytest.mark.django_db
@@ -81,6 +116,8 @@ def test_closed_signup_closes_provider_signups_too(request_):
     record.signup_open = False
     record.save()
     assert get_adapter().is_open_for_signup(request_, provider_login()) is False
+    finish(request_, provider_login())
+    assert not get_user_model().objects.filter(email="new@example.com").exists()
 
 
 @pytest.mark.parametrize(
