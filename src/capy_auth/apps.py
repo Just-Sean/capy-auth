@@ -33,7 +33,11 @@ class CapyAuthConfig(AppConfig):
             check_staff_middleware,
         )
         from capy_auth.sessions.checks import check_session_store, check_user_sessions
-        from capy_auth.social.checks import check_pretend_provider, check_social_setup
+        from capy_auth.social.checks import (
+            check_pretend_provider,
+            check_social_setup,
+            check_starting_providers,
+        )
 
         checks.register(check_account_adapter)
         checks.register(check_starting_values)
@@ -53,6 +57,7 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_staff_can_confirm)
         checks.register(check_social_setup)
         checks.register(check_pretend_provider)
+        checks.register(check_starting_providers)
         checks.register(check_admin_login)
         ban_receivers.connect_receivers()
         account_receivers.connect_receivers()

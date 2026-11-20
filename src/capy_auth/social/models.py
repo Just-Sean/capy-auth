@@ -14,7 +14,11 @@ class SocialProvider(models.Model):
     enabled = models.BooleanField(
         _("switched on"),
         default=False,
-        help_text=_("Offer this provider on the sign-in and signup pages."),
+        help_text=_(
+            "Offer this provider on the sign-in and signup pages. Switched off, people "
+            "who only ever signed in with it need \u201cForgot your password?\u201d to "
+            "get back in; their connection stays, and they can still remove it."
+        ),
     )
 
     class Meta:

@@ -1,31 +1,27 @@
 """Social sign-in's framework (capy_auth/social/, 14a of #33): providers set up in the
 settings (tests/settings.py: GitHub, switched on by CAPY_AUTH_SOCIAL_PROVIDERS_ON, and a
-company's OpenID Connect server, off), switched on and off on the dashboard, database-
-stored apps ignored, the admin page, and the checks capy_auth.E013 and E014."""
+company's OpenID Connect server, off), switched on and off on the Sign-in providers
+page, database-stored apps ignored, and the checks E013 to E015 and W007. The admin page
+and more ways to try to break it are in test_social_edges.py."""
 
 import importlib
 import secrets
 
 import pytest
+from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import _build_apps_from_settings, get_adapter
-from allauth.socialaccount.models import SocialApp
+from allauth.socialaccount.models import SocialAccount, SocialApp, SocialLogin
 from allauth.socialaccount.providers.dummy.provider import DummyProvider
 from django.apps import apps as django_apps
-from django.contrib import admin
 from django.http import Http404
 from django.urls import reverse
 
 from capy_auth.config.checks import check_security_settings
 from capy_auth.social import adapter as adapter_module
-from capy_auth.social import admin as admin_module
 from capy_auth.social import checks
-from capy_auth.social.admin import NOT_SET_UP, SocialProviderAdmin
 from capy_auth.social.models import SocialProvider
 from capy_auth.social.services import add_new_providers
-from tests.accounts import PASSWORD
-from tests.staff import two_step_client
 
-PROVIDERS_PAGE = reverse("admin:capy_auth_socialprovider_changelist")
 GITHUB_LOGIN = reverse("github_login")
 
 
@@ -55,16 +51,34 @@ def test_only_switched_on_providers_are_offered():
 
 
 @pytest.mark.django_db
-def test_a_switched_off_provider_cant_be_used_even_at_its_address(client):
+def test_a_switched_off_provider_is_not_found_at_its_sign_in_addresses(client):
     assert client.get(GITHUB_LOGIN).status_code == 200  # on: allauth's "continue" page
     switch("github", False)
-    with pytest.raises(SocialApp.DoesNotExist):
-        get_adapter().get_app(None, "github")
-    assert client.get(GITHUB_LOGIN).status_code == 404
+    for path in (GITHUB_LOGIN, reverse("github_callback") + "?code=x&state=y"):
+        assert client.get(path).status_code == 404
 
 
 @pytest.mark.django_db
-def test_migrate_again_keeps_the_dashboards_choice_and_rows_of_providers_gone(settings):
+def test_a_sign_in_through_a_switched_off_provider_is_refused_when_it_answers(rf):
+    """The last line of defense: allauth's hook once the provider has answered."""
+    login = SocialLogin(account=SocialAccount(provider="github", uid="1"))
+    get_adapter().pre_social_login(rf.get("/"), login)  # on: goes ahead
+    switch("github", False)
+    with pytest.raises(ImmediateHttpResponse) as refused:
+        get_adapter().pre_social_login(rf.get("/"), login)
+    assert refused.value.response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_an_account_already_connected_still_finds_its_switched_off_provider(ada):
+    """So people can see and remove it (the Connected accounts page)."""
+    account = SocialAccount.objects.create(user=ada, provider="github", uid="1")
+    switch("github", False)
+    assert account.get_provider().id == "github"
+
+
+@pytest.mark.django_db
+def test_migrate_again_keeps_the_pages_choice_and_rows_of_providers_gone(settings):
     switch("github", False)
     SocialProvider.objects.create(provider_id="gitlab", enabled=True)  # no longer set up
     settings.CAPY_AUTH_SOCIAL_PROVIDERS_ON = ["github", "company-sso"]
@@ -75,15 +89,27 @@ def test_migrate_again_keeps_the_dashboards_choice_and_rows_of_providers_gone(se
 
 
 @pytest.mark.django_db
+def test_a_provider_with_an_empty_client_id_or_secret_isnt_set_up(settings):
+    settings.SOCIALACCOUNT_PROVIDERS = {
+        **settings.SOCIALACCOUNT_PROVIDERS,
+        "github": {"APPS": [{"client_id": "test-github", "secret": ""}]},
+    }
+    assert offered() == set()
+    assert [app.provider_id or app.provider for app in get_adapter().list_apps(None)] == [
+        "company-sso"
+    ]
+
+
+@pytest.mark.django_db
 def test_a_provider_stored_in_the_database_is_never_used(django_assert_num_queries):
     """allauth's SocialApp keeps the secret in the database: capy-auth ignores it, and
-    doesn't even read its table (the one query reads which providers are switched on)."""
+    doesn't even read its table."""
     stored = SocialApp.objects.create(
         provider="github", client_id="from-db", secret=secrets.token_urlsafe()
     )
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(0):
         apps = get_adapter().list_apps(None)
-    assert [app.client_id for app in apps] == ["test-github"]
+    assert [app.client_id for app in apps if app.provider == "github"] == ["test-github"]
     stored.delete()
 
 
@@ -91,86 +117,35 @@ def test_a_provider_stored_in_the_database_is_never_used(django_assert_num_queri
 def test_the_providers_are_read_without_querying_allauths_table(django_assert_num_queries):
     with django_assert_num_queries(0):
         apps = _build_apps_from_settings()  # allauth's own code capy-auth relies on
-    assert {app.provider_id or app.provider for found in apps.values() for app in found} == {
-        "github",
-        "company-sso",
-    }
+    ids = {app.provider_id or app.provider for found in apps.values() for app in found}
+    assert ids == {"github", "company-sso"}
 
 
-@pytest.mark.django_db
-def test_the_pretend_provider_is_hidden_and_refused_when_switched_off(monkeypatch, rf):
-    """allauth's pretend provider has no credentials, so list_apps can't refuse it."""
-    pretend = DummyProvider(rf.get("/"), app=None)
-    base = adapter_module.DefaultSocialAccountAdapter
-    monkeypatch.setattr(base, "list_providers", lambda self, request: [pretend])
-    monkeypatch.setattr(base, "get_provider", lambda self, *args, **kwargs: pretend)
-    assert offered() == set()
-    with pytest.raises(Http404):
-        get_adapter().get_provider(None, "dummy")
-    SocialProvider.objects.create(provider_id="dummy", enabled=True)
-    assert offered() == {"dummy"}
-    assert get_adapter().get_provider(None, "dummy") is pretend
-
-
-# --- The dashboard ------------------------------------------------------------------------
+# --- allauth's pretend provider -----------------------------------------------------------
 
 
 @pytest.fixture
-def superuser_client(django_user_model):
-    superuser = django_user_model.objects.create_superuser(
-        username="root", email="root@example.com", password=PASSWORD
-    )
-    return two_step_client(superuser)
+def pretend(monkeypatch, rf):
+    provider = DummyProvider(rf.get("/"), app=None)
+    base = adapter_module.DefaultSocialAccountAdapter
+    monkeypatch.setattr(base, "list_providers", lambda self, request: [provider])
+    monkeypatch.setattr(base, "get_provider", lambda self, *args, **kwargs: provider)
+    return provider
 
 
 @pytest.mark.django_db
-def test_the_dashboard_lists_providers_and_where_to_register_them(superuser_client):
-    SocialProvider.objects.create(provider_id="gitlab")
-    response = superuser_client.get(PROVIDERS_PAGE)
-    assert response.status_code == 200
-    page = response.content.decode()
-    assert "GitHub" in page and "OpenID Connect" in page
-    assert reverse("github_callback") in page
-    assert reverse("openid_connect_callback", kwargs={"provider_id": "company-sso"}) in page
-    assert str(NOT_SET_UP).split(":")[0] in page  # gitlab
-    assert "test-github" not in page  # nothing from the credentials
+def test_the_pretend_provider_is_offered_only_when_switched_on(pretend):
+    assert offered() == set()
+    SocialProvider.objects.create(provider_id="dummy", enabled=True)
+    assert offered() == {"dummy"}
 
 
 @pytest.mark.django_db
-def test_admins_switch_a_provider_on(superuser_client):
-    provider = SocialProvider.objects.get(provider_id="company-sso")
-    change = reverse("admin:capy_auth_socialprovider_change", args=[provider.pk])
-    assert superuser_client.post(change, {"enabled": "on"}).status_code == 302
-    assert "company-sso" in offered()
-
-
-def test_a_provider_without_a_callback_address_shows_a_dash(monkeypatch):
-    monkeypatch.setattr(admin_module.registry, "get_class", lambda provider_id: DummyProvider)
-    assert admin_module.callback_path("dummy") is None
-    monkeypatch.setattr(admin_module.registry, "get_class", lambda provider_id: None)
-    assert admin_module.callback_path("not-set-up") == "/accounts/oidc/not-set-up/login/callback/"
-
-
-@pytest.mark.django_db
-def test_migrate_back_to_before_the_table_adds_nothing():
-    from django.db import connection
-    from django.db.migrations.loader import MigrationLoader
-
-    before = MigrationLoader(connection).project_state(
-        [("capy_auth", "0004_existing_users_email_addresses")]
-    )
-    add_new_providers(apps=before.apps)  # no table there: nothing to do, no error
-
-
-def test_rows_come_from_the_settings_not_the_add_page(rf):
-    assert SocialProviderAdmin(SocialProvider, admin.site).has_add_permission(rf.get("/")) is False
-
-
-def test_allauths_page_that_stores_secrets_is_gone():
-    assert not admin.site.is_registered(SocialApp)
-    site = admin.AdminSite(name="project_already_removed_it")
-    admin_module.remove_allauths_secret_page(site)  # nothing to remove: no error
-    assert not site.is_registered(SocialApp)
+def test_the_pretend_provider_is_refused_with_debug_off_and_found_in_development(pretend, settings):
+    with pytest.raises(Http404):
+        get_adapter().get_provider(None, "dummy")
+    settings.DEBUG = True
+    assert get_adapter().get_provider(None, "dummy") is pretend
 
 
 # --- The checks ---------------------------------------------------------------------------
@@ -187,21 +162,52 @@ def test_without_capy_auths_social_adapter_the_site_doesnt_start(settings):
 def test_without_allauths_social_app_the_site_doesnt_start(monkeypatch):
     monkeypatch.setattr(checks.apps, "is_installed", lambda name: False)
     assert [e.id for e in checks.check_social_setup(None)] == ["capy_auth.E013"]
-
-
-def test_the_pretend_provider_is_refused_in_production(settings):
     assert checks.check_pretend_provider(None) == []
-    settings.INSTALLED_APPS = [*settings.INSTALLED_APPS, checks.PRETEND_PROVIDER]
+    assert checks.check_starting_providers(None) == []  # E013 says what to do first
+
+
+def test_the_pretend_provider_is_refused_with_debug_off_however_its_installed(
+    monkeypatch, settings
+):
+    registry = importlib.import_module("allauth.socialaccount.providers").registry
+    assert checks.check_pretend_provider(None) == []
+
+    class Copy(DummyProvider):
+        id = "copy"
+
+    monkeypatch.setattr(registry, "get_class_list", lambda: [Copy])
     assert [e.id for e in checks.check_pretend_provider(None)] == ["capy_auth.E014"]
     settings.DEBUG = True  # development
     assert checks.check_pretend_provider(None) == []
 
 
-def test_storing_providers_tokens_gets_a_warning(settings):
+@pytest.mark.parametrize("value", ["github", ["github", 3]])
+def test_the_starting_providers_must_be_a_list_of_ids(settings, value):
+    settings.CAPY_AUTH_SOCIAL_PROVIDERS_ON = value
+    assert [e.id for e in checks.check_starting_providers(None)] == ["capy_auth.E015"]
+
+
+@pytest.mark.django_db
+def test_a_one_string_starting_value_switches_nothing_on(settings):
+    SocialProvider.objects.all().delete()
+    settings.CAPY_AUTH_SOCIAL_PROVIDERS_ON = "github"  # E015 says how to fix it
+    add_new_providers()
+    assert not SocialProvider.objects.get(provider_id="github").enabled
+
+
+def test_a_starting_provider_that_isnt_set_up_gets_a_warning(settings):
+    assert checks.check_starting_providers(None) == []
+    settings.CAPY_AUTH_SOCIAL_PROVIDERS_ON = ["GitHub", "github"]
+    [warning] = checks.check_starting_providers(None)
+    assert warning.id == "capy_auth.W007" and "GitHub" in warning.msg
+
+
+@pytest.mark.parametrize("name", ["SOCIALACCOUNT_STORE_TOKENS", "SOCIALACCOUNT_LOGIN_ON_GET"])
+def test_weakened_social_settings_get_a_warning(settings, name):
     assert check_security_settings(None) == []
-    settings.SOCIALACCOUNT_STORE_TOKENS = True
+    setattr(settings, name, True)
     [warning] = check_security_settings(None)
-    assert "SOCIALACCOUNT_STORE_TOKENS" in warning.msg
+    assert name in warning.msg
 
 
 def test_this_project_uses_capy_auths_social_adapter():

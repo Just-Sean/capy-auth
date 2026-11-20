@@ -6,13 +6,14 @@ installed: without it, that import would crash before the check could say what t
 
 from django.apps import apps
 from django.conf import settings
-from django.core.checks import Error
+from django.core.checks import Error, Warning
 from django.utils.module_loading import import_string
 
 SOCIAL_APP = "allauth.socialaccount"
 ADAPTER_PATH = "capy_auth.social.adapter.SocialAccountAdapter"
 PRETEND_PROVIDER = "allauth.socialaccount.providers.dummy"
 ALLAUTH_ADAPTER = "allauth.socialaccount.adapter.DefaultSocialAccountAdapter"
+STARTING_SETTING = "CAPY_AUTH_SOCIAL_PROVIDERS_ON"
 
 
 def uses_capy_auth_adapter():
@@ -43,8 +44,15 @@ def check_social_setup(app_configs, **kwargs):
 
 def check_pretend_provider(app_configs, **kwargs):
     """allauth's pretend provider signs anyone in as any email they type: development
-    and tests only."""
-    if settings.DEBUG or PRETEND_PROVIDER not in settings.INSTALLED_APPS:
+    only. Looks at the providers allauth loaded, so any way of installing it (or a copy
+    of it) counts; capy-auth's adapter also refuses it at run time with DEBUG off."""
+    if settings.DEBUG or not apps.is_installed(SOCIAL_APP):
+        return []
+    from allauth.socialaccount.providers import registry
+
+    from .selectors import is_pretend
+
+    if not any(is_pretend(cls) for cls in registry.get_class_list()):
         return []
     return [
         Error(
@@ -53,5 +61,36 @@ def check_pretend_provider(app_configs, **kwargs):
             hint=f'Add "{PRETEND_PROVIDER}" to INSTALLED_APPS only when DEBUG is on (in '
             "development), as capy-auth's README says.",
             id="capy_auth.E014",
+        )
+    ]
+
+
+def check_starting_providers(app_configs, **kwargs):
+    """CAPY_AUTH_SOCIAL_PROVIDERS_ON must be a list of ids; one that isn't set up does
+    nothing, which is usually a typo."""
+    value = getattr(settings, STARTING_SETTING, [])
+    if not isinstance(value, list | tuple) or not all(isinstance(i, str) for i in value):
+        return [
+            Error(
+                f"{STARTING_SETTING} must be a list of provider ids, not {value!r}.",
+                hint="When it comes from the environment, read it as a list "
+                f'(env.list("{STARTING_SETTING}", default=[])).',
+                id="capy_auth.E015",
+            )
+        ]
+    if not apps.is_installed(SOCIAL_APP):
+        return []  # E013 reports it
+    from .services import set_up_provider_ids
+
+    unknown = sorted(set(value) - set_up_provider_ids())
+    if not unknown:
+        return []
+    return [
+        Warning(
+            f"{STARTING_SETTING} names providers that aren't set up: {', '.join(unknown)}.",
+            hint='Use the ids the admin\'s Sign-in providers page shows ("github", or an '
+            "OpenID Connect server's provider_id), and give each its client ID and "
+            "secret in SOCIALACCOUNT_PROVIDERS.",
+            id="capy_auth.W007",
         )
     ]
