@@ -1,10 +1,12 @@
 """Changes to stored MFA data: re-encrypting every secret with the first key (to finish
-changing keys), and warning a person whose code step keeps failing."""
+changing keys), warning a person whose code step keeps failing, and signing an account
+out elsewhere when it adds a way of two-step sign-in."""
 
 from allauth.account.adapter import get_adapter
 from allauth.account.utils import user_email
 from allauth.mfa.models import Authenticator
 from cryptography.fernet import InvalidToken
+from django.apps import apps
 from django.core.cache import cache
 from django.db import transaction
 
@@ -59,3 +61,17 @@ def count_failed_code(user):
 
 def forget_failed_codes(user):
     cache.delete(FAILURES_KEY.format(user.pk))
+
+
+def end_other_sessions(sender, request, user, **kwargs):
+    """allauth's authenticator_added signal: signs the account out of every other
+    browser and app, as after any change to how it signs in. A session from before
+    two-step sign-in was set up (one signed in with a password alone, such as an app's)
+    can't then carry on without it. The person's own session stays."""
+    if request is None or not apps.is_installed("allauth.usersessions"):
+        return
+    from allauth.usersessions.models import UserSession
+
+    current = request.session.session_key
+    for session in UserSession.objects.filter(user=user).exclude(session_key=current):
+        session.end()

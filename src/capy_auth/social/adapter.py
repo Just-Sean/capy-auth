@@ -24,11 +24,15 @@ from .selectors import is_pretend, set_up_apps, switched_on
 # (github_login, openid_connect_login), coming back (…_callback), and the pretend
 # provider's form (dummy_authenticate).
 SIGN_IN_ADDRESS_ENDINGS = ("_login", "_callback", "_authenticate")
+# allauth's sign-in API's addresses for the same.
+API_SIGN_IN_ADDRESSES = {"redirect_to_provider", "provider_token"}
 
 
 def is_sign_in_address(request):
     match = getattr(request, "resolver_match", None)
     name = (match.url_name or "") if match else ""
+    if name in API_SIGN_IN_ADDRESSES:
+        return True
     return name.endswith(SIGN_IN_ADDRESS_ENDINGS) and not name.startswith("account_")
 
 

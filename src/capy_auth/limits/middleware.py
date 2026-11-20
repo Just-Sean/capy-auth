@@ -18,6 +18,7 @@ logger = logging.getLogger("capy_auth")
 # Names of the pages this covers: allauth's account, two-step sign-in (including passkey
 # sign-in) and sessions pages, and capy-auth's own.
 ACCOUNT_PAGE_PREFIXES = ("account_", "mfa_", "usersessions_", "capy_auth_")
+API_NAMESPACE = "headless"
 # Cache client libraries whose own errors mean the cache is down.
 CACHE_CLIENT_MODULES = ("redis", "pymemcache", "pylibmc")
 PROBE_KEY = "capy_auth:cache-probe"
@@ -26,6 +27,8 @@ RETRY_AFTER_SECONDS = 60
 
 def is_account_page(request):
     match = request.resolver_match
+    if match and API_NAMESPACE in match.namespaces:  # allauth's sign-in API
+        return True
     return bool(match and match.url_name and match.url_name.startswith(ACCOUNT_PAGE_PREFIXES))
 
 

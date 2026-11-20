@@ -8,11 +8,17 @@ import pytest
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.test import Client
+from django.urls import reverse
 
 from capy_auth.bans.models import BannedEmail
 from capy_auth.config.selectors import get_auth_settings
+from capy_auth.social.models import SocialProvider
+from tests import totp
 from tests.accounts import PASSWORD
-from tests.staff import make_staff
+from tests.staff import make_staff, with_app
+from tests.test_mfa import confirmed, set_up_app
+from tests.test_passkeys_edges import break_cache
 
 API = "/accounts/_allauth"
 CONFIG = f"{API}/browser/v1/config"
@@ -53,19 +59,12 @@ def test_a_wrong_password_is_refused(client, ada):
 def test_a_banned_address_cant_sign_up_through_the_api(client):
     BannedEmail.objects.create(email="mallory@example.com")
     mail.outbox.clear()
-    post(client, APP_SIGNUP, {"email": "mallory@example.com", "password": PASSWORD})
+    response = post(client, APP_SIGNUP, {"email": "mallory@example.com", "password": PASSWORD})
+    assert response.status_code == 401  # as for any new address: "confirm your email"
+    flows = response.json()["data"]["flows"]
+    assert [flow["id"] for flow in flows if flow.get("is_pending")] == ["verify_email"]
     assert not get_user_model().objects.filter(email="mallory@example.com").exists()
     assert len(mail.outbox) == 1  # only the ban notice, as at signup on the site
-
-
-@pytest.mark.django_db
-def test_a_staff_api_session_never_opens_the_admin(client, ada):
-    """The staff two-step rule works on pages; an app's session token isn't a page
-    session, so it can't reach the admin (README: staff set it up on the website)."""
-    make_staff(ada, superuser=True)
-    token = post(client, APP_LOGIN, {"email": "ada@example.com", "password": PASSWORD}).json()
-    response = client.get("/admin/", HTTP_X_SESSION_TOKEN=token["meta"]["session_token"])
-    assert response.status_code == 302 and "/login/" in response.url
 
 
 def test_without_allauths_api_capy_auth_offers_none(monkeypatch):
@@ -81,3 +80,76 @@ def test_without_allauths_api_capy_auth_offers_none(monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(capy_auth.urls)
+
+
+BROWSER_LOGIN = f"{API}/browser/v1/auth/login"
+BROWSER_SESSION = f"{API}/browser/v1/auth/session"
+
+
+@pytest.mark.django_db
+def test_staff_without_two_step_get_the_same_redirect_on_the_browser_api(ada):
+    """The browser API shares the site's cookies, so the staff rule applies."""
+    make_staff(ada)
+    client = Client(enforce_csrf_checks=False)
+    assert (
+        post(client, BROWSER_LOGIN, {"email": ada.email, "password": PASSWORD}).status_code == 200
+    )
+    response = client.get(BROWSER_SESSION)
+    assert response.status_code == 302 and response.url == reverse("mfa_index")
+
+
+@pytest.mark.django_db
+def test_staff_who_used_two_step_on_the_browser_api_go_on(ada):
+    make_staff(ada)
+    secret = with_app(ada)
+    client = Client()
+    post(client, BROWSER_LOGIN, {"email": ada.email, "password": PASSWORD})
+    post(client, f"{API}/browser/v1/auth/2fa/authenticate", {"code": totp.code(secret)})
+    assert client.get(BROWSER_SESSION).status_code == 200
+    assert client.get("/admin/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_an_app_token_used_as_the_sites_cookie_meets_the_staff_rule(ada, settings):
+    make_staff(ada, superuser=True)
+    token = post(Client(), APP_LOGIN, {"email": ada.email, "password": PASSWORD}).json()
+    client = Client()
+    client.cookies[settings.SESSION_COOKIE_NAME] = token["meta"]["session_token"]
+    response = client.get("/admin/")
+    assert response.status_code == 302 and response.url == reverse("mfa_index")
+
+
+@pytest.mark.django_db(transaction=True)  # allauth tells of it once the save commits
+def test_adding_two_step_sign_in_ends_the_accounts_other_sessions(ada):
+    app = post(Client(), APP_LOGIN, {"email": ada.email, "password": PASSWORD}).json()
+    token = app["meta"]["session_token"]
+    browser = confirmed(Client())
+    set_up_app(browser)
+    assert Client().get(APP_SESSION, HTTP_X_SESSION_TOKEN=token).status_code == 410
+    assert browser.get(reverse("capy_auth_account")).status_code == 200  # this one stays
+
+
+@pytest.mark.django_db
+def test_with_the_cache_down_the_api_gets_the_503_answer(monkeypatch, ada):
+    client = Client(raise_request_exception=False)
+    break_cache(monkeypatch)
+    response = post(client, APP_LOGIN, {"email": ada.email, "password": PASSWORD})
+    assert response.status_code == 503
+
+
+@pytest.mark.django_db
+def test_a_switched_off_provider_is_refused_at_the_apis_address(client):
+    SocialProvider.objects.filter(provider_id="github").update(enabled=False)
+    response = client.post(
+        f"{API}/browser/v1/auth/provider/redirect",
+        {"provider": "github", "process": "login", "callback_url": "/"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_an_authenticator_added_outside_a_page_signs_nobody_out(ada):
+    """allauth's signal without a request (a script): nothing to compare against."""
+    from capy_auth.mfa.services import end_other_sessions
+
+    end_other_sessions(sender=None, request=None, user=ada)

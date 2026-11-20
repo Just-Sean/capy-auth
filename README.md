@@ -491,6 +491,12 @@ In a project made from capy-project, with its database running
        could reveal by going backwards; allauth doesn't store it, and synced passkeys
        (phones, password managers) always report 0, so capy-auth doesn't check it.
 
+     **Adding a way of two-step sign-in** (an app, a passkey or a security key) signs
+     the account out of every other browser and app, as many sites do after a change
+     to how an account signs in: a session that signed in with the password alone
+     can't carry on without the new second step. The browser it was added in stays
+     signed in.
+
      Recovery codes can be seen and downloaded again later, after the password is
      typed again (as GitHub and Google do). After 5 wrong codes in an hour at the code
      step, the account's owner gets an email saying someone has their password (once;
@@ -709,7 +715,12 @@ In a project made from capy-project, with its database running
      own sign-in API ("headless") to `INSTALLED_APPS`, after `"allauth.socialaccount"`:
 
      ```python
-     "allauth.headless",  # allauth's sign-in API, at /accounts/_allauth/
+     INSTALLED_APPS = [
+         ...,
+         "allauth.socialaccount",
+         "allauth.headless",  # allauth's sign-in API, at /accounts/_allauth/
+         ...,
+     ]
      ```
 
      capy-auth's URLs then include it at `/accounts/_allauth/` (allauth's documentation
@@ -721,11 +732,26 @@ In a project made from capy-project, with its database running
      the limits, emails through the worker. It needs no new package (allauth's
      `headless` extra comes with capy-auth).
 
-     **Staff** set up two-step sign-in on the website, not through the API: capy-auth's
-     staff rule works on pages, and an app's session token never opens the admin or
-     any other page, so it gives staff nothing more than anyone else. A module's own
-     API that signs people in with these tokens would need the same rule (planned for
-     v1.1, with Django REST framework).
+     **An app's session token is the session's key**, as secret as the session cookie:
+     apps keep it in the device's secure storage (Keychain, Keystore), and nothing logs
+     the `X-Session-Token` header. Used as the website's cookie, it's an ordinary
+     signed-in session, and capy-auth's rules apply as usual.
+
+     **Staff** set up two-step sign-in on the website before using the API. capy-auth's
+     staff rule works on the website's pages and on the browser API (which shares the
+     site's cookies): until a staff member has used two-step sign-in in that session,
+     every browser API call (signing out included) gets the same redirect to
+     "Two-step sign-in" as a page would, which a front end can't use. An app's token
+     isn't seen by that rule, so a staff member's app session can do only what anyone
+     else's can (the account's own settings, never the admin); and since adding a way
+     of two-step sign-in signs the account out everywhere else, a token from before it
+     was set up stops working. A module's own API that signs people in with these
+     tokens would need the staff rule too (planned for v1.1, with Django REST framework).
+
+     When the cache (Redis) is down, the API gets the same "temporarily unavailable"
+     answer (503) as the pages. A switched-off provider is refused at the API's own
+     addresses too. Through a separate-origin front end, the project's CORS settings
+     must allow only that origin.
 
    - **The encryption key (whoever sets up the server does this once).** MFA secrets
      (the key each authenticator app shares with the site, and the seed of recovery

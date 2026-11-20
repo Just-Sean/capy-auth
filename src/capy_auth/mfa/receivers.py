@@ -2,7 +2,7 @@
 
 from allauth.mfa.signals import authentication_failed, authenticator_added, authenticator_used
 
-from .services import count_failed_code, forget_failed_codes
+from .services import count_failed_code, end_other_sessions, forget_failed_codes
 from .staff import remember_set_up
 
 
@@ -19,3 +19,4 @@ def connect_receivers():
     authentication_failed.connect(failed_code, dispatch_uid="capy_auth_mfa_failed")
     authenticator_used.connect(code_accepted, dispatch_uid="capy_auth_mfa_used")
     authenticator_added.connect(remember_set_up, dispatch_uid="capy_auth_mfa_set_up")
+    authenticator_added.connect(end_other_sessions, dispatch_uid="capy_auth_mfa_sign_out")
