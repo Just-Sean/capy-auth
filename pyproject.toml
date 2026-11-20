@@ -8,7 +8,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
     "django>=6.1,<7",          # the Django versions this module supports
-    "django-allauth[mfa,socialaccount]>=65.22.1,<66",  # accounts, MFA and social login
+    "django-allauth[headless,mfa,socialaccount]>=65.22.1,<66",  # accounts, MFA, social login, API
     # Encrypts MFA secrets (Fernet, stable for years); no upper limit, so projects get its
     # security releases without waiting for capy-auth. allauth's MFA needs it too.
     "cryptography>=50.0.2",

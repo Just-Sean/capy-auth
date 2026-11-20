@@ -45,7 +45,7 @@ source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
     { name = "django" },
-    { name = "django-allauth", extra = ["mfa", "socialaccount"] },
+    { name = "django-allauth", extra = ["headless", "mfa", "socialaccount"] },
 ]
 
 [package.dev-dependencies]
@@ -65,7 +65,7 @@ dev = [
 requires-dist = [
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "django", specifier = ">=6.1,<7" },
-    { name = "django-allauth", extras = ["mfa", "socialaccount"], specifier = ">=65.22.1,<66" },
+    { name = "django-allauth", extras = ["headless", "mfa", "socialaccount"], specifier = ">=65.22.1,<66" },
 ]
 
 [package.metadata.requires-dev]
@@ -474,6 +474,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+headless = [
+    { name = "pyjwt", extra = ["crypto"] },
+]
 mfa = [
     { name = "fido2" },
     { name = "qrcode" },

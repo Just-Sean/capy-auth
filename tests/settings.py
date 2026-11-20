@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "allauth.usersessions",
     "allauth.mfa",
     "allauth.socialaccount",
+    "allauth.headless",  # the optional sign-in API
     # Social sign-in providers, as a project picks them: GitHub and a generic OpenID
     # Connect server. (allauth's pretend provider is for development only: E014.)
     "allauth.socialaccount.providers.github",

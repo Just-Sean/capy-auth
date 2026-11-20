@@ -26,4 +26,6 @@ if apps.is_installed("allauth.mfa"):  # without it, Django's checks say so (E008
     urlpatterns.append(
         path("2fa/totp/activate/", never_cache(activate_totp), name="mfa_activate_totp")
     )
+if apps.is_installed("allauth.headless"):  # optional: allauth's sign-in API
+    urlpatterns.append(path("_allauth/", include("allauth.headless.urls")))
 urlpatterns.append(path("", include("allauth.urls")))

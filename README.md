@@ -705,6 +705,28 @@ In a project made from capy-project, with its database running
      only from a form (`SOCIALACCOUNT_LOGIN_ON_GET`, off by default): Django's checks warn
      (`capy_auth.W001`) if either is turned on.
 
+   - **Sign-in API (optional).** For a mobile app or a separate front end, add allauth's
+     own sign-in API ("headless") to `INSTALLED_APPS`, after `"allauth.socialaccount"`:
+
+     ```python
+     "allauth.headless",  # allauth's sign-in API, at /accounts/_allauth/
+     ```
+
+     capy-auth's URLs then include it at `/accounts/_allauth/` (allauth's documentation
+     describes every endpoint). An app signs in at `/accounts/_allauth/app/v1/auth/login`
+     and sends the `session_token` it gets back in an `X-Session-Token` header; a front
+     end on the same site uses `/accounts/_allauth/browser/v1/` with the site's cookies
+     and CSRF token. Everything capy-auth does applies there too, since allauth's API
+     uses the same adapters: signup open or closed, the ban list, breached passwords,
+     the limits, emails through the worker. It needs no new package (allauth's
+     `headless` extra comes with capy-auth).
+
+     **Staff** set up two-step sign-in on the website, not through the API: capy-auth's
+     staff rule works on pages, and an app's session token never opens the admin or
+     any other page, so it gives staff nothing more than anyone else. A module's own
+     API that signs people in with these tokens would need the same rule (planned for
+     v1.1, with Django REST framework).
+
    - **The encryption key (whoever sets up the server does this once).** MFA secrets
      (the key each authenticator app shares with the site, and the seed of recovery
      codes) are stored encrypted, so a copy of the database alone (a dump, a backup, a
@@ -1687,7 +1709,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/models.py` | Lists the module's database models for Django (each lives in its section) |
 | `src/capy_auth/admin.py` | Lists the module's admin pages for Django (each lives in its section) |
 | `src/capy_auth/config/` | The settings record (`models.py`), reading it (`selectors.py`), its admin page (`admin.py`, which also shows whether the MFA key is set) and Django's checks for the project's setup (`checks.py`: errors E001–E003, warnings W001 for weakened security settings, W002 for a cache the worker can't share, W003 for a missing breached-password check) |
-| `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), and allauth's pages |
+| `src/capy_auth/urls.py` | capy-auth's URLs (mounted at `accounts/`): the "Your account" page, where people land after logging in, the "Signed-in devices" page (`sessions/`), allauth's pages, and allauth's sign-in API (`_allauth/`) when it's installed |
 | `src/capy_auth/mfa/` | Encrypting MFA secrets (`crypto.py`), the MFA adapter that does it (`adapter.py`), re-encrypting and the wrong-code warning (`services.py`, `receivers.py`), the passkey forms (`forms.py`), two-step sign-in required for staff (`staff.py`), and the startup checks E007 to E012, W005 and W006 (`checks.py`) |
 | `src/capy_auth/templates/capy_auth/staff/` | What the two-step pages show staff who must use it: why they're there (`notice.html`), and "Sign out" or "Continue" (`way_on.html`) |
 | `src/capy_auth/management/commands/capy_auth_reencrypt.py` | `manage.py capy_auth_reencrypt`: re-encrypts every MFA secret with the first key |
@@ -1739,6 +1761,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_passkey_pages.py` | Checks the passkey pages' wording, the second step worded for the person's ways of signing in, and that every passkey page has what its scripts need |
 | `tests/test_passkeys_edges.py` | Tries to break passkeys: bans, unconfirmed emails, replayed answers, another person's key, keys without a PIN, rate limits, the cache going down, sessions, names |
 | `tests/test_social.py` | Checks which providers are offered (switched on, set up in the settings with both values, never from the database), a switched-off provider refused at its addresses and when it answers while connected accounts still find it, the list after `migrate`, the pretend provider, E013 to E015, W007 and the weakened-settings warnings |
+| `tests/test_api.py` | Checks allauth's sign-in API through capy-auth's URLs: signup closed in its config, an app's sign-in and session token, the ban list, and that the token never opens the admin |
 | `tests/test_social_rules.py` | Checks the ban list for provider sign-ins (an account at the provider, a banned email; recorded only for new accounts), signup closed, the warnings against joining by email, and allauth's social pages inside the layout |
 | `tests/test_social_edges.py` | Tries to break it (from the QA review): look-alike and unknown addresses, database-stored apps, people connected to a switched-off provider, and the Sign-in providers page (what it shows, who can use it, what can't be switched on or deleted) |
 | `tests/test_staff_two_step.py` | Checks staff and superusers must use two-step sign-in (setting it up counts, then "Continue"; or confirm with it, offered only its ways; a passkey counts), what the pages say and allow meanwhile, the admin's login going to capy-auth's sign-in page, E010 to E012 |
