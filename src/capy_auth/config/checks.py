@@ -107,6 +107,11 @@ def security_settings():
         ("ACCOUNT_PREVENT_ENUMERATION", "True", bool(account_settings.PREVENT_ENUMERATION)),
         ("ACCOUNT_REAUTHENTICATION_REQUIRED", "True", account_settings.REAUTHENTICATION_REQUIRED),
         (
+            "SOCIALACCOUNT_LOGIN_ON_GET",
+            "False (a sign-in with a provider starts only from a form)",
+            not getattr(settings, "SOCIALACCOUNT_LOGIN_ON_GET", False),
+        ),
+        (
             "SOCIALACCOUNT_STORE_TOKENS",
             "False (capy-auth only signs people in)",
             not getattr(settings, "SOCIALACCOUNT_STORE_TOKENS", False),

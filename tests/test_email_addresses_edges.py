@@ -443,18 +443,24 @@ def test_the_real_migration_runs_backwards_and_forwards_with_existing_users():
     from django.db.migrations.executor import MigrationExecutor
 
     executor = MigrationExecutor(connection)
-    executor.migrate([("capy_auth", "0003_ban_list")])
-    executor.loader.build_graph()
-    old_apps = executor.loader.project_state([("capy_auth", "0003_ban_list")]).apps
-    user_model = old_apps.get_model(*get_user_model()._meta.label.split("."))
-    fields = {"username": "old", "email": "Old@Example.com", "password": "x"}
-    pk = user_model.objects.create(**fields).pk
-    executor = MigrationExecutor(connection)
-    executor.migrate([("capy_auth", "0004_existing_users_email_addresses")])
-    address = EmailAddress.objects.get(user_id=pk)
-    assert (address.email, address.primary, address.verified) == ("old@example.com", True, False)
-    executor = MigrationExecutor(connection)  # back to the newest, for the tests after it
-    executor.migrate(executor.loader.graph.leaf_nodes("capy_auth"))
+    try:
+        executor.migrate([("capy_auth", "0003_ban_list")])
+        executor.loader.build_graph()
+        old_apps = executor.loader.project_state([("capy_auth", "0003_ban_list")]).apps
+        user_model = old_apps.get_model(*get_user_model()._meta.label.split("."))
+        fields = {"username": "old", "email": "Old@Example.com", "password": "x"}
+        pk = user_model.objects.create(**fields).pk
+        executor = MigrationExecutor(connection)
+        executor.migrate([("capy_auth", "0004_existing_users_email_addresses")])
+        address = EmailAddress.objects.get(user_id=pk)
+        assert (address.email, address.primary, address.verified) == (
+            "old@example.com",
+            True,
+            False,
+        )
+    finally:  # back to the newest, for the tests after it, even if this one failed
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes("capy_auth"))
 
 
 # --- More flows ------------------------------------------------------------------------------

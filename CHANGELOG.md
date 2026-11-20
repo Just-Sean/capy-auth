@@ -15,4 +15,5 @@ version finishes a change the one before it started), or "nothing".
   their next page: before deploying, make sure each can set up an authenticator app or
   a passkey (email must work for the codes), or keep the README's server command for
   removing authenticators at hand. Migration 0005 adds the Sign-in providers table
-  (empty until providers are set up).
+  (empty until providers are set up). Social sign-in needs `allauth.socialaccount` and
+  `SOCIALACCOUNT_ADAPTER` in every project, even with no providers (E013).

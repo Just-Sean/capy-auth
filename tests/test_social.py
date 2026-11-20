@@ -56,7 +56,7 @@ def test_only_switched_on_providers_are_offered():
 
 @pytest.mark.django_db
 def test_a_switched_off_provider_cant_be_used_even_at_its_address(client):
-    assert client.get(GITHUB_LOGIN).status_code in (200, 302)  # on: allauth's flow
+    assert client.get(GITHUB_LOGIN).status_code == 200  # on: allauth's "continue" page
     switch("github", False)
     with pytest.raises(SocialApp.DoesNotExist):
         get_adapter().get_app(None, "github")
@@ -75,12 +75,15 @@ def test_migrate_again_keeps_the_dashboards_choice_and_rows_of_providers_gone(se
 
 
 @pytest.mark.django_db
-def test_a_provider_stored_in_the_database_is_never_used():
-    """allauth's SocialApp keeps the secret in the database: capy-auth ignores it."""
+def test_a_provider_stored_in_the_database_is_never_used(django_assert_num_queries):
+    """allauth's SocialApp keeps the secret in the database: capy-auth ignores it, and
+    doesn't even read its table (the one query reads which providers are switched on)."""
     stored = SocialApp.objects.create(
         provider="github", client_id="from-db", secret=secrets.token_urlsafe()
     )
-    assert [app.client_id for app in get_adapter().list_apps(None)] == ["test-github"]
+    with django_assert_num_queries(1):
+        apps = get_adapter().list_apps(None)
+    assert [app.client_id for app in apps] == ["test-github"]
     stored.delete()
 
 
@@ -129,7 +132,7 @@ def test_the_dashboard_lists_providers_and_where_to_register_them(superuser_clie
     assert "GitHub" in page and "OpenID Connect" in page
     assert reverse("github_callback") in page
     assert reverse("openid_connect_callback", kwargs={"provider_id": "company-sso"}) in page
-    assert str(NOT_SET_UP).replace("’", "&#x27;").split(":")[0] in page  # gitlab
+    assert str(NOT_SET_UP).split(":")[0] in page  # gitlab
     assert "test-github" not in page  # nothing from the credentials
 
 
@@ -165,6 +168,9 @@ def test_rows_come_from_the_settings_not_the_add_page(rf):
 
 def test_allauths_page_that_stores_secrets_is_gone():
     assert not admin.site.is_registered(SocialApp)
+    site = admin.AdminSite(name="project_already_removed_it")
+    admin_module.remove_allauths_secret_page(site)  # nothing to remove: no error
+    assert not site.is_registered(SocialApp)
 
 
 # --- The checks ---------------------------------------------------------------------------
@@ -211,7 +217,7 @@ def test_without_allauths_social_app_capy_auth_loads_none_of_it(monkeypatch):
         django_apps, "is_installed", lambda name: name != checks.SOCIAL_APP and installed(name)
     )
     try:
-        django_apps.get_app_config("capy_auth").ready()  # connects nothing for social
+        django_apps.get_app_config("capy_auth").ready()  # loads no social code: no error
         assert "SocialProviderAdmin" not in importlib.reload(capy_auth.admin).__all__
     finally:
         monkeypatch.undo()

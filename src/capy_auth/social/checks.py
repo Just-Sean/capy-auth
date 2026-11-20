@@ -1,7 +1,7 @@
 """Django system checks for social sign-in: allauth's social app and capy-auth's adapter
-must be in use (or the dashboard's on/off switches do nothing, and providers stored in
-the database would be offered), and allauth's pretend provider never runs in
-production. Nothing here imports allauth's social code before checking the app is
+must be in use (or the admin's Sign-in providers page does nothing, and providers stored
+in the database would be offered), and allauth's pretend provider never runs with DEBUG
+off. Nothing here imports allauth's social code before checking the app is
 installed: without it, that import would crash before the check could say what to do."""
 
 from django.apps import apps
@@ -32,7 +32,8 @@ def check_social_setup(app_configs, **kwargs):
     return [
         Error(
             "capy-auth's social sign-in needs allauth's social app and capy-auth's social "
-            "adapter, which offers only the providers switched on in the dashboard.",
+            "adapter, which offers only the providers switched on on the admin's Sign-in "
+            "providers page. Every project needs both, even with no providers set up.",
             hint=f'Add "{SOCIAL_APP}" to INSTALLED_APPS and set SOCIALACCOUNT_ADAPTER = '
             f'"{ADAPTER_PATH}" (or a subclass of it), as capy-auth\'s README says.',
             id="capy_auth.E013",
@@ -47,8 +48,8 @@ def check_pretend_provider(app_configs, **kwargs):
         return []
     return [
         Error(
-            "allauth's pretend sign-in provider is installed in production: anyone could "
-            "sign in as any email address with it.",
+            "allauth's pretend sign-in provider is installed while DEBUG is off (as in "
+            "production and tests): anyone could sign in as any email address with it.",
             hint=f'Add "{PRETEND_PROVIDER}" to INSTALLED_APPS only when DEBUG is on (in '
             "development), as capy-auth's README says.",
             id="capy_auth.E014",

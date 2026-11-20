@@ -11,7 +11,7 @@ REQUEST_ATTRIBUTE = "_capy_auth_providers_on"
 
 
 def provider_key(app):
-    """The id the dashboard knows a provider by: an OpenID Connect server's own
+    """The id the Sign-in providers page knows a provider by: an OpenID Connect server's own
     provider_id, or allauth's id for the provider."""
     return app.provider_id or app.provider
 
@@ -24,7 +24,7 @@ def set_up_apps(provider=None, client_id=None):
 
 
 def switched_on():
-    """The ids switched on in the dashboard. Read once per request (kept on the request
+    """The ids switched on on the Sign-in providers page. Read once per request (kept on the request
     allauth's middleware holds), since a page asks once per provider."""
     request = context.request
     ids = getattr(request, REQUEST_ATTRIBUTE, None)

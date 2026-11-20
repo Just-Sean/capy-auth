@@ -15,10 +15,16 @@ from django.utils.translation import gettext_lazy as _
 from .models import SocialProvider
 from .services import set_up_provider_ids
 
-# allauth registers its page when its admin module loads, which may be after this one:
-# load it now, so the page is there to remove.
-import_module("allauth.socialaccount.admin")
-admin.site.unregister(SocialApp)
+
+def remove_allauths_secret_page(site):
+    """allauth registers its page when its admin module loads, which may be after this
+    one: load it now, so the page is there to remove (unless the project already did)."""
+    import_module("allauth.socialaccount.admin")
+    if site.is_registered(SocialApp):
+        site.unregister(SocialApp)
+
+
+remove_allauths_secret_page(admin.site)
 
 NOT_SET_UP = _("Not set up: its client ID and secret aren't in the settings")
 NO_CALLBACK = "—"

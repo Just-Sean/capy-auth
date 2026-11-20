@@ -1,5 +1,5 @@
 """capy-auth's social account adapter: allauth asks it which providers exist. It offers
-only providers set up in the settings and switched on in the dashboard
+only providers set up in the settings and switched on on the admin's Sign-in providers page
 (SocialProvider). A project points SOCIALACCOUNT_ADAPTER at it (see the README)."""
 
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
