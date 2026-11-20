@@ -961,6 +961,16 @@ In a project made from capy-project, with its database running
 
    If this module is a theme or an app shell, also add the line this README gives to
    the project's `layout.html`, where its comments say (see [Pages](#pages)).
+
+   **The account menu:** add capy-auth's line to the nav bar in `layout.html` (next to
+   capy-theme's logo and light/dark switch, where its comments say). Signed out, it
+   shows "Sign in" and "Sign up" (while signup is open); signed in, a menu with the
+   person's email, "Your account", "Admin" for staff, and "Sign out". It needs no
+   JavaScript and makes at most one database query:
+
+   ```html
+   {% load capy_auth %}{% capy_auth_menu %}
+   ```
 7. capy-auth's pages use daisyUI classes, which capy-theme styles. The project needs
    Tailwind CSS 4 and daisyUI 5 set up as capy-theme's README says ("Tailwind and
    daisyUI for a new project"). Tailwind only includes classes it finds in the files
@@ -1787,6 +1797,8 @@ If the repository itself moved, also point git at it:
 | `tests/test_passkey_pages.py` | Checks the passkey pages' wording, the second step worded for the person's ways of signing in, and that every passkey page has what its scripts need |
 | `tests/test_passkeys_edges.py` | Tries to break passkeys: bans, unconfirmed emails, replayed answers, another person's key, keys without a PIN, rate limits, the cache going down, sessions, names |
 | `tests/test_social.py` | Checks which providers are offered (switched on, set up in the settings with both values, never from the database), a switched-off provider refused at its addresses and when it answers while connected accounts still find it, the list after `migrate`, the pretend provider, E013 to E015, W007 and the weakened-settings warnings |
+| `src/capy_auth/templatetags/capy_auth.py`, `templates/capy_auth/menu.html` | The account menu for `layout.html` (`{% capy_auth_menu %}`) |
+| `tests/test_menu.py` | Checks the account menu signed out (signup open or closed) and in (staff get the admin), with at most one query |
 | `tests/test_api.py` | Checks allauth's sign-in API through capy-auth's URLs: signup closed in its config, an app's sign-in and session token, the ban list, and that the token never opens the admin |
 | `tests/test_social_rules.py` | Checks the ban list for provider sign-ins (an account at the provider, a banned email; recorded only for new accounts), signup closed, the warnings against joining by email, and allauth's social pages inside the layout |
 | `tests/test_social_edges.py` | Tries to break it (from the QA review): look-alike and unknown addresses, database-stored apps, people connected to a switched-off provider, and the Sign-in providers page (what it shows, who can use it, what can't be switched on or deleted) |
