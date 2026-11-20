@@ -61,3 +61,11 @@ def test_without_the_admin_there_is_no_admin_link(monkeypatch):
 
     monkeypatch.setattr(tags, "reverse", missing)
     assert tags.admin_url() is None
+
+
+@pytest.mark.django_db
+def test_it_works_without_the_request_in_the_template(ada):
+    """Django's auth context processor gives it the user (admin needs it too)."""
+    from django.template import Context
+
+    assert "ada@example.com" in MENU.render(Context({"user": ada}))

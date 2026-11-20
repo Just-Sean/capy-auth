@@ -1771,6 +1771,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/templates/capy_auth/locked_out.html` | django-axes' "too many attempts" lockout page, inside the layout (`AXES_LOCKOUT_TEMPLATE`) |
 | `tests/client_ip.py` | A small copy of capy-project's `client_ip`, so the tests find the visitor's address as capy-project does behind its proxy |
 | `src/capy_auth/passwords/breached.py` | The breached-password check: asks Have I Been Pwned with a 5-character hash prefix, refuses breached passwords, fails closed |
+| `src/capy_auth/templatetags/capy_auth.py`, `templates/capy_auth/menu.html` | The account menu for `layout.html` (`{% capy_auth_menu %}`) |
 | `src/capy_auth/templatetags/capy_auth_forms.py` | The `daisy_widget` filter: adds the classes `widget.html` picks to an input |
 | `src/capy_auth/account/services.py`, `account/receivers.py` | Confirming an address by hand, the "choose your password" email for accounts staff create, confirming the address on a completed reset |
 | `src/capy_auth/management/commands/mark_email_verified.py` | `manage.py mark_email_verified <email>` |
@@ -1797,7 +1798,6 @@ If the repository itself moved, also point git at it:
 | `tests/test_passkey_pages.py` | Checks the passkey pages' wording, the second step worded for the person's ways of signing in, and that every passkey page has what its scripts need |
 | `tests/test_passkeys_edges.py` | Tries to break passkeys: bans, unconfirmed emails, replayed answers, another person's key, keys without a PIN, rate limits, the cache going down, sessions, names |
 | `tests/test_social.py` | Checks which providers are offered (switched on, set up in the settings with both values, never from the database), a switched-off provider refused at its addresses and when it answers while connected accounts still find it, the list after `migrate`, the pretend provider, E013 to E015, W007 and the weakened-settings warnings |
-| `src/capy_auth/templatetags/capy_auth.py`, `templates/capy_auth/menu.html` | The account menu for `layout.html` (`{% capy_auth_menu %}`) |
 | `tests/test_menu.py` | Checks the account menu signed out (signup open or closed) and in (staff get the admin), with at most one query |
 | `tests/test_api.py` | Checks allauth's sign-in API through capy-auth's URLs: signup closed in its config, an app's sign-in and session token, the ban list, and that the token never opens the admin |
 | `tests/test_social_rules.py` | Checks the ban list for provider sign-ins (an account at the provider, a banned email; recorded only for new accounts), signup closed, the warnings against joining by email, and allauth's social pages inside the layout |

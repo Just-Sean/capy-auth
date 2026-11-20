@@ -20,10 +20,8 @@ def admin_url():
 def capy_auth_menu(context):
     """Signed out: sign in, and sign up while it's open. Signed in: the person's email,
     their account, the admin for staff, and sign out."""
-    request = context["request"]
-    user = request.user
+    user = context.get("user") or context["request"].user  # Django's auth context processor
     return {
-        "request": request,
         "user": user,
         "csrf_token": context.get("csrf_token"),
         "signup_open": not user.is_authenticated and get_auth_settings().signup_open,
