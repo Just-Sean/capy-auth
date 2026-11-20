@@ -453,6 +453,8 @@ def test_the_real_migration_runs_backwards_and_forwards_with_existing_users():
     executor.migrate([("capy_auth", "0004_existing_users_email_addresses")])
     address = EmailAddress.objects.get(user_id=pk)
     assert (address.email, address.primary, address.verified) == ("old@example.com", True, False)
+    executor = MigrationExecutor(connection)  # back to the newest, for the tests after it
+    executor.migrate(executor.loader.graph.leaf_nodes("capy_auth"))
 
 
 # --- More flows ------------------------------------------------------------------------------

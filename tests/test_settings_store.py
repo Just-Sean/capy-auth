@@ -29,9 +29,10 @@ SETTINGS_PAGE = reverse("admin:capy_auth_authsettings_change", args=[AuthSetting
 # The settings form with signup left unticked (closed) and the other options unchanged.
 CLOSE_SIGNUP = {"_save": "Save", "breached_password_check": "everyone"}
 HISTORY_PAGE = reverse("admin:capy_auth_authsettings_history", args=[AuthSettings.SINGLETON_ID])
-# The signup page's database queries once the settings record exists: reading it, once
-# for the whole request (README: Queries).
-SIGNUP_PAGE_QUERIES = 1
+# The signup page's database queries once the settings record exists: reading it, and
+# which sign-in providers are switched on, each once for the whole request (README:
+# Queries), however many providers there are.
+SIGNUP_PAGE_QUERIES = 2
 
 
 @pytest.fixture

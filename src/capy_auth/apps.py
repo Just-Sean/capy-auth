@@ -33,6 +33,7 @@ class CapyAuthConfig(AppConfig):
             check_staff_middleware,
         )
         from capy_auth.sessions.checks import check_session_store, check_user_sessions
+        from capy_auth.social.checks import check_pretend_provider, check_social_setup
 
         checks.register(check_account_adapter)
         checks.register(check_starting_values)
@@ -50,6 +51,8 @@ class CapyAuthConfig(AppConfig):
         checks.register(check_passkey_forms)
         checks.register(check_staff_middleware)
         checks.register(check_staff_can_confirm)
+        checks.register(check_social_setup)
+        checks.register(check_pretend_provider)
         checks.register(check_admin_login)
         ban_receivers.connect_receivers()
         account_receivers.connect_receivers()
@@ -63,3 +66,9 @@ class CapyAuthConfig(AppConfig):
             from capy_auth.mfa import receivers as mfa_receivers
 
             mfa_receivers.connect_receivers()
+        if apps.is_installed("allauth.socialaccount"):  # E013 reports it missing
+            from django.db.models.signals import post_migrate
+
+            from capy_auth.social.services import add_new_providers
+
+            post_migrate.connect(add_new_providers, sender=self, dispatch_uid="capy_auth_social")

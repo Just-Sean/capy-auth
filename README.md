@@ -65,6 +65,13 @@ projects made from capy-project run) or SQLite. CI tests both databases with the
   when a project weakens one of these settings. `urls.py` mounts allauth's pages with
   capy-auth's "Your account" page, where people land after logging in, and
   `templates/429.html` puts allauth's "too many attempts" page inside the layout.
+- **Social sign-in** (`social/`): which providers are offered. Each provider's
+  credentials are in the project's settings, from the environment (the standard place
+  for secrets); `models.py` only records whether each set-up provider is switched on,
+  `admin.py` is the page where admins switch them (and removes allauth's page that
+  would store secrets in the database), `adapter.py` is capy-auth's social adapter,
+  which offers only switched-on providers, `services.py` adds newly set-up providers
+  to the list after each `migrate`, and `checks.py` holds E013 and E014.
 - **MFA** (`mfa/`): allauth's MFA app with capy-auth's adapter (`adapter.py`), which
   encrypts every secret allauth stores (`crypto.py`: Fernet from `cryptography`, keys
   from `CAPY_AUTH_ENCRYPTION_KEYS`; why Fernet: a hard-to-misuse recipe with built-in
@@ -256,6 +263,9 @@ In a project made from capy-project, with its database running
        "allauth.account",
        "allauth.usersessions",  # the "Signed-in devices" page
        "allauth.mfa",  # two-step sign-in
+       "allauth.socialaccount",  # sign-in with Google, GitHub, …
+       # One line per sign-in provider you set up (step 4, "Sign-in providers"):
+       "allauth.socialaccount.providers.github",
        ...,
    ]
    MIDDLEWARE = [
@@ -545,6 +555,79 @@ In a project made from capy-project, with its database running
      For staff that's safe enough: with two-step sign-in required, a breached password
      alone can't get in (once they've set it up). A check at sign-in would also fail
      closed, so an outage of the breach service would lock every admin out.
+
+   - **Sign-in providers (Google, GitHub, a company's sign-in server, …).** capy-auth
+     supports every provider allauth has. Whoever runs the site sets each one up in
+     the settings, with its client ID and secret from environment variables (the usual
+     place for secrets: never in the database, its dumps or backups); admins then
+     switch each set-up provider on or off on the admin's **Sign-in providers** page,
+     which also shows the callback address to register with the provider. Without
+     allauth's social app or capy-auth's adapter, Django's checks stop the site
+     (`capy_auth.E013`).
+
+     ```python
+     # capy-auth's social adapter: offers only the providers switched on in the admin,
+     # and never reads providers stored in the database (allauth's "Social
+     # applications", which would keep the secret there; capy-auth removes that page).
+     SOCIALACCOUNT_ADAPTER = "capy_auth.social.adapter.SocialAccountAdapter"
+     # Each provider's client ID and secret, from the environment (.env.production, and
+     # listed in .env.example). Leave a provider out until it has both.
+     SOCIALACCOUNT_PROVIDERS = {
+         "github": {
+             "APPS": [
+                 {
+                     "client_id": env("GITHUB_CLIENT_ID"),
+                     "secret": env("GITHUB_CLIENT_SECRET"),
+                 }
+             ]
+         },
+     }
+     # Providers that start switched on (the first migrate after each is set up). After
+     # that, the admin's Sign-in providers page decides.
+     CAPY_AUTH_SOCIAL_PROVIDERS_ON = env.list("CAPY_AUTH_SOCIAL_PROVIDERS_ON", default=[])
+     ```
+
+     **To add a provider:**
+     1. Create an app (OAuth client) in the provider's developer console. allauth's
+        documentation for the provider says where, and which settings it needs
+        (some need a `"settings"` entry, such as scopes or a tenant).
+     2. Add its app to `INSTALLED_APPS` (`"allauth.socialaccount.providers.google"`), its
+        client ID and secret to `SOCIALACCOUNT_PROVIDERS` and to `.env.production`, and
+        deploy. The deploy's `migrate` adds it to the Sign-in providers page, switched
+        off unless `CAPY_AUTH_SOCIAL_PROVIDERS_ON` lists it.
+     3. Register the callback address the page shows (after the site's address, for
+        example `https://example.com/accounts/github/login/callback/`) with the
+        provider, then switch it on.
+
+     A provider switched off is hidden from the sign-in page and its own addresses
+     say "not found". A provider that's removed from the settings stays on the page,
+     marked "Not set up", until an admin deletes it.
+
+     **Any other OpenID Connect server** (a company's own sign-in, Keycloak, Okta, …) uses
+     allauth's `openid_connect` provider: add `"allauth.socialaccount.providers.openid_connect"`
+     and, in `SOCIALACCOUNT_PROVIDERS["openid_connect"]["APPS"]`, one entry per server
+     with its own `provider_id` (the name the admin page shows), `name` (the button's
+     text), `client_id`, `secret` and `"settings": {"server_url": "https://…"}`.
+
+     **Providers that need more:** SAML needs allauth's `saml` extra (`uv add
+     "django-allauth[saml]"`, which needs system libraries). allauth's `openid` and
+     `steam` providers need `python3-openid`, which is no longer maintained, so
+     capy-auth doesn't support them. Apple needs a paid Apple developer account.
+
+     **For development,** allauth's pretend provider signs you in as any email you type,
+     with no account anywhere: add `"allauth.socialaccount.providers.dummy"` to
+     `INSTALLED_APPS` only when `DEBUG` is on (in production it would let anyone in as
+     anyone, so Django's checks stop the site if it's there: `capy_auth.E014`), then
+     switch it on on the Sign-in providers page:
+
+     ```python
+     if DEBUG:
+         INSTALLED_APPS.append("allauth.socialaccount.providers.dummy")
+     ```
+
+     capy-auth doesn't keep the providers' access tokens (allauth's
+     `SOCIALACCOUNT_STORE_TOKENS`, off by default; Django's checks warn, `capy_auth.W001`,
+     if it's turned on): it only signs people in.
 
    - **The encryption key (whoever sets up the server does this once).** MFA secrets
      (the key each authenticator app shares with the site, and the seed of recovery
@@ -838,6 +921,12 @@ In a project made from capy-project, with its database running
    admin. Sign out and in again: after the code, the admin opens straight away.
    Signed in as someone who isn't staff, the admin says "403 Forbidden".
 
+   To check sign-in providers, add allauth's pretend provider for development (step 4,
+   "Sign-in providers"), run `migrate`, and open the admin's **Sign-in providers**
+   page: it lists the pretend provider, switched off. Sign out: the sign-in page has
+   no button for it, and http://localhost:8000/accounts/dummy/login/ says "not found".
+   Switch it on: the sign-in page offers it.
+
    To check the staff email, add a user in the admin, open the "An account was created
    for you" email in the `runserver` output, choose a password with its link, and sign
    in without another code.
@@ -860,6 +949,7 @@ CHANGELOG names it).
 | Setting | Default | Starting value of |
 | --- | --- | --- |
 | `CAPY_AUTH_SIGNUP_OPEN` | `True` | **Signup open:** anyone can create an account. When off, the signup page says signup is closed and creates no accounts. allauth's own `ACCOUNT_SIGNUP_ENABLED = False` also closes it. |
+| `CAPY_AUTH_SOCIAL_PROVIDERS_ON` | `[]` | **Sign-in providers switched on:** the ids of set-up providers (`"github"`, or an OpenID Connect server's `provider_id`) that start switched on when they're first added to the Sign-in providers page (by the `migrate` after they're set up). After that the page decides. |
 | `CAPY_AUTH_BREACHED_PASSWORD_CHECK` | `"everyone"` | **Check breached passwords:** `"everyone"` (shown as "everyone"), `"staff"` ("staff and superusers") or `"off"` ("nobody"). New passwords that have appeared in a data breach are refused. While it applies and Have I Been Pwned can't be reached, new passwords are refused too. Needs the validator in `AUTH_PASSWORD_VALIDATORS` (install step 4, which also says who each level covers). |
 
 Settings that must not change while the site runs (secrets, the site's domain, the
@@ -1517,6 +1607,7 @@ If the repository itself moved, also point git at it:
 | `src/capy_auth/templates/capy_auth/mfa_unavailable.html` | The page shown when a stored MFA secret can't be decrypted |
 | `src/capy_auth/templates/capy_auth/passkeys/` | The passkey parts of capy-auth's pages: the sign-in page's form and scripts, the second step's passkey form, allauth's scripts plus capy-auth's, and the status line with the no-JavaScript notice |
 | `src/capy_auth/static/capy_auth/js/passkeys.js` | Shows a message when a passkey attempt fails, hides passkey buttons on browsers without passkeys, and stops a second press while one runs |
+| `src/capy_auth/social/` | Social sign-in: which set-up providers are switched on (`models.py`, `selectors.py`), the Sign-in providers admin page (`admin.py`), capy-auth's social adapter (`adapter.py`), adding newly set-up providers after `migrate` (`services.py`), and the startup checks E013 and E014 (`checks.py`) |
 | `src/capy_auth/sessions/` | Recording every sign-in (`recording.py`), the "Signed-in devices" page's view (`views.py`), and the startup checks E006 and W004 (`checks.py`) |
 | `src/capy_auth/templates/usersessions/` | The "Signed-in devices" page at `accounts/sessions/` and its message (rewritten from allauth's; compare with allauth's when upgrading it, as for `account/`) |
 | `src/capy_auth/templates/capy_auth/account.html` | The "Your account" page |
@@ -1559,6 +1650,7 @@ If the repository itself moved, also point git at it:
 | `tests/test_passkeys.py` | Checks adding a passkey or security key, signing in with it on its own and as the second step (refusing forged answers and other sites), confirming a change with it, renaming and removing it, E009 and W006 |
 | `tests/test_passkey_pages.py` | Checks the passkey pages' wording, the second step worded for the person's ways of signing in, and that every passkey page has what its scripts need |
 | `tests/test_passkeys_edges.py` | Tries to break passkeys: bans, unconfirmed emails, replayed answers, another person's key, keys without a PIN, rate limits, the cache going down, sessions, names |
+| `tests/test_social.py` | Checks which providers are offered (switched on, set up in the settings, never from the database), a switched-off provider refused at its own address, the list after `migrate`, the Sign-in providers page, E013, E014 and the token warning |
 | `tests/test_staff_two_step.py` | Checks staff and superusers must use two-step sign-in (setting it up counts, then "Continue"; or confirm with it, offered only its ways; a passkey counts), what the pages say and allow meanwhile, the admin's login going to capy-auth's sign-in page, E010 to E012 |
 | `tests/test_staff_two_step_edges.py` | Tries to break it (from the QA review): a password alone reaching recovery codes or managing two-step sign-in, a project page named like a two-step page, the admin's Log out, POSTs and AJAX, people who stop being staff, another person's second step, where "next" leads |
 | `tests/staff.py` | Signs staff in with two-step sign-in, for the tests of the admin pages, and helpers for the staff tests |

@@ -14,4 +14,5 @@ version finishes a change the one before it started), or "nothing".
   one of them can confirm it. Staff and superusers must use two-step sign-in from
   their next page: before deploying, make sure each can set up an authenticator app or
   a passkey (email must work for the codes), or keep the README's server command for
-  removing authenticators at hand.
+  removing authenticators at hand. Migration 0005 adds the Sign-in providers table
+  (empty until providers are set up).

@@ -107,6 +107,11 @@ def security_settings():
         ("ACCOUNT_PREVENT_ENUMERATION", "True", bool(account_settings.PREVENT_ENUMERATION)),
         ("ACCOUNT_REAUTHENTICATION_REQUIRED", "True", account_settings.REAUTHENTICATION_REQUIRED),
         (
+            "SOCIALACCOUNT_STORE_TOKENS",
+            "False (capy-auth only signs people in)",
+            not getattr(settings, "SOCIALACCOUNT_STORE_TOKENS", False),
+        ),
+        (
             "ACCOUNT_REAUTHENTICATION_TIMEOUT",
             f"at most {MAX_REAUTHENTICATION_SECONDS} (5 minutes)",
             account_settings.REAUTHENTICATION_TIMEOUT <= MAX_REAUTHENTICATION_SECONDS,

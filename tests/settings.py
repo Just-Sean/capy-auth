@@ -40,6 +40,11 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.usersessions",
     "allauth.mfa",
+    "allauth.socialaccount",
+    # Social sign-in providers, as a project picks them: GitHub and a generic OpenID
+    # Connect server. (allauth's pretend provider is for development only: E014.)
+    "allauth.socialaccount.providers.github",
+    "allauth.socialaccount.providers.openid_connect",
     "axes",
 ]
 
@@ -109,6 +114,25 @@ MFA_SUPPORTED_TYPES = ["totp", "recovery_codes", "webauthn"]
 MFA_PASSKEY_LOGIN_ENABLED = True  # "Sign in with a passkey"; signing up with one stays off
 MFA_TOTP_TOLERANCE = 1  # the previous 30-second code still works (RFC 6238)
 CAPY_AUTH_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
+
+# Social sign-in, as the README tells a project: credentials from the environment there,
+# made-up ones made each run here (nothing to keep secret). GitHub starts switched on.
+SOCIALACCOUNT_ADAPTER = "capy_auth.social.adapter.SocialAccountAdapter"
+SOCIALACCOUNT_PROVIDERS = {
+    "github": {"APPS": [{"client_id": "test-github", "secret": secrets.token_urlsafe()}]},
+    "openid_connect": {
+        "APPS": [
+            {
+                "provider_id": "company-sso",
+                "name": "Company sign-in",
+                "client_id": "test-sso",
+                "secret": secrets.token_urlsafe(),
+                "settings": {"server_url": "https://sso.example.com"},
+            }
+        ]
+    },
+}
+CAPY_AUTH_SOCIAL_PROVIDERS_ON = ["github"]
 
 # capy-project's password rules (config/settings/users.py).
 AUTH_PASSWORD_VALIDATORS = [
