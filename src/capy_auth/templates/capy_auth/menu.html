@@ -1,0 +1,28 @@
+{% comment %}
+  capy-auth's account menu for the project's nav bar ({% capy_auth_menu %}). The
+  dropdown is daisyUI's <details> one: it opens without JavaScript, so it works under
+  the strict Content Security Policy.
+{% endcomment %}
+{% load i18n %}
+{% if user.is_authenticated %}
+    <details class="dropdown dropdown-end">
+        <summary class="btn btn-ghost">{{ user.email|default:user.get_username }}</summary>
+        <ul class="menu dropdown-content bg-base-100 rounded-box z-10 w-56 p-2 shadow">
+            <li><a href="{% url 'capy_auth_account' %}">{% translate "Your account" %}</a></li>
+            {% if admin_url %}
+                <li><a href="{{ admin_url }}">{% translate "Admin" %}</a></li>
+            {% endif %}
+            <li>
+                <form method="post" action="{% url 'account_logout' %}">
+                    {% csrf_token %}
+                    <button type="submit">{% translate "Sign out" %}</button>
+                </form>
+            </li>
+        </ul>
+    </details>
+{% else %}
+    <a class="btn btn-ghost" href="{% url 'account_login' %}">{% translate "Sign in" %}</a>
+    {% if signup_open %}
+        <a class="btn btn-primary" href="{% url 'account_signup' %}">{% translate "Sign up" %}</a>
+    {% endif %}
+{% endif %}

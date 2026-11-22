@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% comment %}
+  Shown (status 503) when a stored two-step sign-in secret can't be decrypted: the key
+  in CAPY_AUTH_ENCRYPTION_KEYS that encrypted it is gone (capy_auth/limits/middleware.py;
+  the server's log says so). Nobody gets in without a working code.
+{% endcomment %}
+{% load i18n %}
+{% block title %}{% translate "Two-step sign-in unavailable" %}{% endblock %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        <h1 class="text-2xl font-bold">{% translate "Two-step sign-in can’t be checked right now" %}</h1>
+        <p>{% translate "Your code couldn’t be checked because of a problem on the site, not with your code. Please contact the site’s staff: they can let you back in, and you then set up two-step sign-in again." %}</p>
+        <p>
+            <a class="link" href="/">{% translate "Go to the home page" %}</a>
+        </p>
+    </div>
+{% endblock %}

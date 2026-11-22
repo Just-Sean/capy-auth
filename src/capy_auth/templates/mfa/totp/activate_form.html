@@ -1,0 +1,53 @@
+{% extends "mfa/totp/base.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/totp/activate_form.html, rewritten
+  rather than copied: the QR code on a white background (black on transparent can't be
+  scanned on a dark theme), the key as text you can select and copy, in groups of 4
+  (a disabled box can't be copied and cuts it off on phones), a link that opens an
+  authenticator app on this device, plain alt text, and a way back. It keeps allauth's
+  form. Check allauth's original when upgrading allauth (a test fails when it changes).
+{% endcomment %}
+{% load allauth i18n capy_auth_forms %}
+{% block head_title %}
+    {% translate "Set up an authenticator app" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Set up an authenticator app" %}
+        {% endelement %}
+        {% element p %}
+            {% translate "Scan this QR code with your authenticator app (such as Google Authenticator, Microsoft Authenticator or 1Password), then enter the 6-digit code it shows." %}
+        {% endelement %}
+        <div class="w-fit rounded-box bg-white p-3">
+            <img class="size-48"
+                 src="{{ totp_svg_data_uri }}"
+                 width="192"
+                 height="192"
+                 alt="{% translate 'QR code to scan with your authenticator app' %}">
+        </div>
+        <p>{% translate "Can’t scan it? Type this key into the app instead:" %}</p>
+        <p>
+            <code class="font-mono text-lg break-words select-all" id="authenticator_secret">{{ form.secret|in_fours }}</code>
+        </p>
+        <p>
+            <a class="link" href="{{ totp_url }}">{% translate "Open it in an authenticator app on this device" %}</a>
+        </p>
+        {% url 'mfa_activate_totp' as action_url %}
+        {% element form form=form method="post" action=action_url %}
+            {% slot body %}
+                {% csrf_token %}
+                {% element fields form=form %}
+                {% endelement %}
+            {% endslot %}
+            {% slot actions %}
+                {% element button type="submit" %}
+                    {% translate "Turn it on" %}
+                {% endelement %}
+            {% endslot %}
+        {% endelement %}
+        <p>
+            <a class="link" href="{% url 'mfa_index' %}">{% translate "Back to two-step sign-in" %}</a>
+        </p>
+    </div>
+{% endblock content %}

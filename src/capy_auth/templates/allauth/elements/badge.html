@@ -1,0 +1,11 @@
+{% load allauth %}
+{% comment %}
+  A daisyUI badge. Its title (an explanation) is also written out for screen readers,
+  since a title on a span only shows on mouse hover.
+{% endcomment %}
+<span class="badge{% if 'primary' in attrs.tags %} badge-primary{% endif %}{% if 'secondary' in attrs.tags %} badge-secondary{% endif %}{% if 'success' in attrs.tags %} badge-success{% endif %}{% if 'warning' in attrs.tags %} badge-warning{% endif %}"
+      {% if attrs.title %}title="{{ attrs.title }}"{% endif %}>
+    {% slot %}
+    {% endslot %}
+    {% if attrs.title %}<span class="sr-only">({{ attrs.title }})</span>{% endif %}
+</span>

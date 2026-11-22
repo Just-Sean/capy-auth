@@ -1,0 +1,1 @@
+{% load i18n %}{% translate "Two-step sign-in is on: signing in now asks for a code from your app." %}

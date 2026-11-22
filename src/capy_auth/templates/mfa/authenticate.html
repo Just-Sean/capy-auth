@@ -1,0 +1,83 @@
+{% extends "mfa/base_entrance.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/authenticate.html: the same page and
+  forms, worded for the ways this person has set up. Someone with an authenticator app
+  is asked for its code first; someone with only a passkey or security key is asked for
+  that first. Either way a recovery code works too (someone who lost their phone needs
+  to know), and cancelling (which signs out) is a plain link. Check allauth's original
+  when upgrading allauth (a test fails when it changes).
+{% endcomment %}
+{% load i18n allauth capy_auth_forms %}
+{% block head_title %}
+    {% with types=form.user|authenticator_types %}
+        {% if "totp" in types %}
+            {% translate "Enter your sign-in code" %}
+        {% else %}
+            {% translate "Use your passkey or security key" %}
+        {% endif %}
+    {% endwith %}
+{% endblock head_title %}
+{% block content %}
+    {% url 'mfa_authenticate' as action_url %}
+    {% with types=form.user|authenticator_types %}
+        <div class="flex flex-col gap-4">
+            {% if "totp" in types %}
+                {% element h1 %}
+                    {% translate "Enter your sign-in code" %}
+                {% endelement %}
+                {% element p %}
+                    {% if webauthn_form and "webauthn" in types %}
+                        {% translate "Your account uses two-step sign-in. Enter the 6-digit code from your authenticator app, or use your passkey or security key. Lost your phone? Enter one of your recovery codes instead." %}
+                    {% else %}
+                        {% translate "Your account uses two-step sign-in. Enter the 6-digit code from your authenticator app. Lost your phone? Enter one of your recovery codes instead." %}
+                    {% endif %}
+                {% endelement %}
+            {% else %}
+                {% element h1 %}
+                    {% translate "Use your passkey or security key" %}
+                {% endelement %}
+                {% element p %}
+                    {% translate "Your account uses two-step sign-in. Confirm it’s you with your passkey or security key. Can’t use it? Enter one of your recovery codes instead." %}
+                {% endelement %}
+                {% if webauthn_form %}
+                    {% include "capy_auth/passkeys/second_step.html" with primary=True %}
+                    {% element hr %}
+                    {% endelement %}
+                {% endif %}
+            {% endif %}
+            {% element form form=form method="post" action=action_url %}
+                {% slot body %}
+                    {% csrf_token %}
+                    {% if "totp" in types %}
+                        {% element fields form=form %}
+                        {% endelement %}
+                    {% else %}
+                        {% element fields form=form recovery_code=True %}
+                        {% endelement %}
+                    {% endif %}
+                {% endslot %}
+                {% slot actions %}
+                    {% if "totp" in types %}
+                        {% element button type="submit" tags="primary,mfa,login" %}
+                            {% translate "Sign in" %}
+                        {% endelement %}
+                    {% else %}
+                        {% element button type="submit" tags="outline,primary,mfa,login" %}
+                            {% translate "Sign in with a recovery code" %}
+                        {% endelement %}
+                    {% endif %}
+                {% endslot %}
+            {% endelement %}
+            {% if "totp" in types and webauthn_form and "webauthn" in types %}
+                {% element hr %}
+                {% endelement %}
+                {% include "capy_auth/passkeys/second_step.html" %}
+            {% endif %}
+            <form id="logout-from-stage" method="post" action="{% url 'account_logout' %}">
+                <input type="hidden" name="next" value="{% url 'account_login' %}">
+                {% csrf_token %}
+                <button type="submit" class="link">{% translate "Cancel and sign out" %}</button>
+            </form>
+        </div>
+    {% endwith %}
+{% endblock content %}

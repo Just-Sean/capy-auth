@@ -1,0 +1,4 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with site_name=current_site.name %}Someone (perhaps you) asked {{ site_name }} to send an email to this address.
+
+This address can't be used for an account on {{ site_name }}, so nothing else will be sent to it. If you think this is a mistake, please contact the site's staff.{% endblocktranslate %}
+{% endautoescape %}

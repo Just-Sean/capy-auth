@@ -1,0 +1,55 @@
+{% extends "mfa/webauthn/base.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's mfa/webauthn/authenticator_list.html,
+  rewritten rather than copied: each passkey or security key is a card (no table to
+  scroll sideways on phones), dates are plain dates (no django.contrib.humanize
+  needed), capy-auth's wording, and a way back. allauth's "passkey" or "security key"
+  type is left out: the browser reports it, nothing enforces it, and any key can sign
+  in on its own if the device allows (mfa/forms.py). Check allauth's original when
+  upgrading allauth (a test fails when it changes).
+{% endcomment %}
+{% load i18n allauth %}
+{% block head_title %}
+    {% translate "Passkeys and security keys" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Passkeys and security keys" %}
+        {% endelement %}
+        {% if not authenticators %}
+            {% element p %}
+                {% translate "None added yet." %}
+            {% endelement %}
+        {% else %}
+            <ul class="flex flex-col gap-3">
+                {% for authenticator in authenticators %}
+                    <li class="card card-border bg-base-100">
+                        <div class="card-body gap-2">
+                            <p class="font-semibold break-words">{{ authenticator }}</p>
+                            <p>
+                                {% blocktranslate with added=authenticator.created_at|date:"DATE_FORMAT" %}Added: {{ added }}{% endblocktranslate %}
+                                <br>
+                                {% if authenticator.last_used_at %}
+                                    {% blocktranslate with used=authenticator.last_used_at|date:"DATE_FORMAT" %}Last used: {{ used }}{% endblocktranslate %}
+                                {% else %}
+                                    {% translate "Not used yet" %}
+                                {% endif %}
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <a class="btn btn-sm h-auto min-h-8 max-w-full whitespace-normal break-words" href="{% url 'mfa_edit_webauthn' pk=authenticator.pk %}">{% blocktranslate with name=authenticator %}Rename {{ name }}{% endblocktranslate %}</a>
+                                <a class="btn btn-sm btn-outline btn-error h-auto min-h-8 max-w-full whitespace-normal break-words" href="{% url 'mfa_remove_webauthn' pk=authenticator.pk %}">{% blocktranslate with name=authenticator %}Remove {{ name }}{% endblocktranslate %}</a>
+                            </div>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        <p>
+            <a class="btn btn-primary" href="{% url 'mfa_add_webauthn' %}">{% translate "Add a passkey or security key" %}</a>
+        </p>
+        <p>
+            <a class="link" href="{% url 'mfa_index' %}">{% translate "Back to two-step sign-in" %}</a>
+        </p>
+    </div>
+{% endblock %}

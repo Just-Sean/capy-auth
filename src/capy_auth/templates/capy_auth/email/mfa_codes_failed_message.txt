@@ -1,0 +1,4 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with site_name=current_site.name %}Someone signed in to your account on {{ site_name }} with your password, but entered the wrong two-step sign-in code several times, so they couldn't get in.
+
+If that was you, there's nothing to do. If it wasn't, someone knows your password: change it now, and check "Signed-in devices" on your account page.{% endblocktranslate %}
+{% endautoescape %}

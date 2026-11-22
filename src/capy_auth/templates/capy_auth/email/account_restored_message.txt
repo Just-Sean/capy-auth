@@ -1,0 +1,12 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with site_name=current_site.name %}Your account on {{ site_name }} has been restored.
+
+For your security, its old password no longer works, every device was signed out, and its two-step sign-in (authenticator app, passkeys and recovery codes) was removed. Choose a new password with this link. It works once, for {{ link_lifetime }}; after that, use "Forgot your password?" on the sign-in page:
+
+{{ password_reset_url }}
+
+Afterwards, sign in here with this email address and your new password:
+
+{{ login_url }}
+
+If you used two-step sign-in, set it up again from your account page.{% endblocktranslate %}
+{% endautoescape %}

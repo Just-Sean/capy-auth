@@ -1,0 +1,46 @@
+{% extends "account/base_entrance.html" %}
+{% comment %}
+  capy-auth's version of allauth 65.22.1's account/base_reauthenticate.html, rewritten
+  rather than copied: "Confirm it's you" with why it asks and for how long, spacing
+  between the parts, and a way back. It keeps allauth's reauthenticate_content block
+  and its list of other ways to confirm. Check allauth's original when upgrading
+  allauth (a test fails when it changes).
+{% endcomment %}
+{% load allauth %}
+{% load i18n %}
+{% block head_title %}
+    {% translate "Confirm it’s you" %}
+{% endblock head_title %}
+{% block content %}
+    <div class="flex flex-col gap-4">
+        {% element h1 %}
+            {% translate "Confirm it’s you" %}
+        {% endelement %}
+        {% if request.capy_auth_two_step_due == "confirm" %}
+            {% include "capy_auth/staff/notice.html" %}
+        {% else %}
+            {% element p %}
+                {% translate "Before this change, please confirm it’s you. After that, we won’t ask again for a few minutes." %}
+            {% endelement %}
+        {% endif %}
+        {% block reauthenticate_content %}{% endblock %}
+        {% if reauthentication_alternatives %}
+            {% element h2 %}
+                {% translate "Other ways to confirm" %}
+            {% endelement %}
+            {% element button_group %}
+                {% for alt in reauthentication_alternatives %}
+                    {% element button href=alt.url tags="primary,outline" %}
+                        {{ alt.description }}
+                    {% endelement %}
+                {% endfor %}
+            {% endelement %}
+        {% endif %}
+        {% include "capy_auth/staff/way_on.html" %}
+        {% if not request.capy_auth_two_step_due %}
+            <p>
+                <a class="link" href="{% url 'capy_auth_account' %}">{% translate "Back to your account" %}</a>
+            </p>
+        {% endif %}
+    </div>
+{% endblock content %}

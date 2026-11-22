@@ -1,0 +1,14 @@
+{% comment %}
+  Why a staff member is on a two-step sign-in page, in the page itself (not only a
+  message that disappears), for the pages capy_auth/mfa/staff.py sends them to.
+{% endcomment %}
+{% load i18n %}
+{% if request.capy_auth_two_step_due == "set_up" %}
+    <div class="alert alert-info">
+        <p>{% translate "Your account is a staff account, so it needs two-step sign-in before you can use the rest of the site. Set up an authenticator app or a passkey here." %}</p>
+    </div>
+{% elif request.capy_auth_two_step_due == "confirm" %}
+    <div class="alert alert-info">
+        <p>{% translate "Your account is a staff account, so it needs two-step sign-in: confirm it’s you with it to continue. Your password or an emailed code isn’t enough." %}</p>
+    </div>
+{% endif %}

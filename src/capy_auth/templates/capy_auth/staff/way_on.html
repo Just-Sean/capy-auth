@@ -1,0 +1,16 @@
+{% comment %}
+  For a staff member who must use two-step sign-in (capy_auth/mfa/staff.py): while
+  it's due, a way to sign out instead of links that would only send them back here;
+  once it's done, "Continue" to the page they were going to. Otherwise nothing.
+{% endcomment %}
+{% load i18n %}
+{% if request.capy_auth_two_step_due %}
+    <form method="post" action="{% url 'account_logout' %}">
+        {% csrf_token %}
+        <button class="btn btn-outline" type="submit">{% translate "Sign out" %}</button>
+    </form>
+{% elif request.session.capy_auth_staff_next %}
+    <p>
+        <a class="btn btn-primary" href="{{ request.session.capy_auth_staff_next }}">{% translate "Continue" %}</a>
+    </p>
+{% endif %}
