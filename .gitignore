@@ -31,3 +31,5 @@ id_ed25519*
 # only (an app may ship a folder of its own called media/).
 /*.sqlite3*
 /media/
+.claude/worktrees/
+.claude/settings.local.json
